@@ -19,6 +19,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { GoOnlineOutsideHoursModal } from '@/components/vendor/GoOnlineOutsideHoursModal';
 import { ExtendedSessionTimer } from '@/components/vendor/ExtendedSessionTimer';
+import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 
 interface TopNavbarProps {
   onMenuToggle?: () => void;
@@ -36,6 +37,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showGoOnlineModal, setShowGoOnlineModal] = useState(false);
+  const [showGoOnlineConfirm, setShowGoOnlineConfirm] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const {
@@ -57,7 +59,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     ? `Profile incomplete (${percentage}%) — click to see what to fill`
     : isOnline ? 'Click to go offline' : 'Click to go online';
 
-  const handleStatusToggle = async () => {
+  const attemptToggleStatus = async () => {
     if (!isOnline && !canGoOnline) {
       openProfileCompletionModal();
       return;
@@ -66,6 +68,14 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     if (result.success === false && 'needExtensionModal' in result && result.needExtensionModal) {
       setShowGoOnlineModal(true);
     }
+  };
+
+  const handleStatusToggle = async () => {
+    if (!isOnline) {
+      setShowGoOnlineConfirm(true);
+      return;
+    }
+    await attemptToggleStatus();
   };
 
   const handleGoOnlineConfirm = async (minutes: number) => {
@@ -195,6 +205,18 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
         isBeforeOpening={operationalInfo?.isBeforeOpening ?? false}
         openingTimeFormatted={operationalInfo?.openingTimeFormatted ?? null}
         closingTimeFormatted={operationalInfo?.closingTimeFormatted ?? null}
+        isConfirming={isToggling}
+      />
+      <ConfirmActionDialog
+        open={showGoOnlineConfirm}
+        onOpenChange={setShowGoOnlineConfirm}
+        onConfirm={async () => {
+          setShowGoOnlineConfirm(false);
+          await attemptToggleStatus();
+        }}
+        title="Go online?"
+        description="Your store will become live to customers and can start receiving orders."
+        confirmLabel="Yes, go online"
         isConfirming={isToggling}
       />
     </header>

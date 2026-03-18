@@ -20,6 +20,8 @@ export const useProductMutations = () => {
       low_stock_threshold?: number;
       category?: string;
       tags?: string;
+      subcategory?: string;
+      dietary_tags?: string[];
       sku?: string;
       unit_of_measure?: string;
       allergens?: string;
@@ -29,8 +31,18 @@ export const useProductMutations = () => {
       promo_price?: number | null;
       promo_valid_until?: string | null;
       coupon_applicable?: boolean;
+      gst_rate?: number | null;
+      packaging_charge?: number | null;
+      handling_charge?: number | null;
+      variants?: Array<{ name: string; price: number }>;
+      addons?: Array<{ name: string; price: number }>;
+      available_from?: string | null;
+      available_until?: string | null;
+      is_bestseller?: boolean;
+      is_recommended?: boolean;
       image_url?: string;
       preparation_time_minutes?: number;
+      spicy_level?: "mild" | "medium" | "spicy" | null;
       is_available: boolean;
     }) => {
       let vendorId = vendor?.id;
@@ -103,6 +115,8 @@ export const useProductMutations = () => {
       low_stock_threshold?: number;
       category?: string;
       tags?: string;
+      subcategory?: string;
+      dietary_tags?: string[];
       sku?: string;
       unit_of_measure?: string;
       allergens?: string;
@@ -112,8 +126,18 @@ export const useProductMutations = () => {
       promo_price?: number | null;
       promo_valid_until?: string | null;
       coupon_applicable?: boolean;
+      gst_rate?: number | null;
+      packaging_charge?: number | null;
+      handling_charge?: number | null;
+      variants?: Array<{ name: string; price: number }>;
+      addons?: Array<{ name: string; price: number }>;
+      available_from?: string | null;
+      available_until?: string | null;
+      is_bestseller?: boolean;
+      is_recommended?: boolean;
       image_url?: string;
       preparation_time_minutes?: number;
+      spicy_level?: "mild" | "medium" | "spicy" | null;
       is_available?: boolean;
     }) => {
       const { data, error } = await supabase

@@ -52,6 +52,7 @@ import {
 import { TableConfigStrip } from '@/features/vendor/components/TableConfigStrip';
 import { TableQRCard } from '@/features/vendor/components/TableQRCard';
 import { useVendorTables } from '@/features/vendor/hooks/useVendorTables';
+import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 import QRCode from 'qrcode';
 import { formatOfferText } from '@/features/storefront/utils/offerUtils';
 
@@ -64,6 +65,14 @@ const BUSINESS_TYPES = [
   { value: 'clinic', label: 'Clinic' },
   { value: 'other', label: 'Other' },
 ];
+
+const BUSINESS_ENTITY_TYPES = [
+  { value: 'sole_proprietorship', label: 'Sole Proprietorship' },
+  { value: 'partnership', label: 'Partnership' },
+  { value: 'private_limited', label: 'Private Limited' },
+  { value: 'llp', label: 'LLP' },
+  { value: 'other', label: 'Other' },
+] as const;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -85,6 +94,27 @@ type BankAccount = {
   account_number?: string;
   ifsc?: string;
   account_type?: 'savings' | 'current';
+};
+
+type KycTaxState = {
+  pan_number?: string;
+  gst_registered?: boolean;
+  gstin?: string;
+  business_entity_type?: 'sole_proprietorship' | 'partnership' | 'private_limited' | 'llp' | 'other';
+  cancelled_cheque_url?: string;
+};
+
+type PaymentModesState = {
+  accept_cash_at_counter?: boolean;
+  accept_online_qr_app?: boolean;
+  pay_at_table_via_waiter?: boolean;
+  allow_bill_request?: boolean;
+  allow_call_waiter?: boolean;
+};
+
+type KotSettingsState = {
+  auto_print_kot?: boolean;
+  printer_target?: string;
 };
 
 type BusinessFormState = {
@@ -110,6 +140,7 @@ type ProfileFormState = {
 const SETTINGS_SECTIONS = [
   { value: 'business', label: 'Business', icon: Building2 },
   { value: 'profile', label: 'Profile', icon: User },
+  { value: 'staff', label: 'Staff', icon: User },
   { value: 'layout', label: 'Layout', icon: LayoutGrid },
   { value: 'offers', label: 'Offers', icon: Tag },
   { value: 'operations', label: 'Operations', icon: Clock },
@@ -148,6 +179,13 @@ type Offer = {
   promo_code: string;
 };
 
+type StaffMember = {
+  id: string;
+  name: string;
+  phone: string;
+  role: 'manager' | 'staff';
+};
+
 export default function Settings() {
   const { user } = useAuth();
   const { data: vendor, isLoading: vendorLoading } = useVendor();
@@ -166,7 +204,7 @@ export default function Settings() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const activeTab = ['business', 'profile', 'layout', 'offers', 'operations', 'notifications', 'payment'].includes(tabParam || '')
+  const activeTab = ['business', 'profile', 'staff', 'layout', 'offers', 'operations', 'notifications', 'payment'].includes(tabParam || '')
     ? tabParam!
     : 'business';
   const setActiveTab = (tab: string) => {
@@ -199,6 +237,24 @@ export default function Settings() {
   const [operationalHours, setOperationalHours] = useState<OperationalHoursState>({ open: '09:00', close: '22:00' });
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>({ ...DEFAULT_NOTIFICATION_PREFS });
   const [paymentForm, setPaymentForm] = useState<BankAccount>({ account_number: '', ifsc: '' });
+  const [kycTaxForm, setKycTaxForm] = useState<KycTaxState>({
+    pan_number: '',
+    gst_registered: false,
+    gstin: '',
+    business_entity_type: 'sole_proprietorship',
+    cancelled_cheque_url: '',
+  });
+  const [paymentModes, setPaymentModes] = useState<PaymentModesState>({
+    accept_cash_at_counter: true,
+    accept_online_qr_app: true,
+    pay_at_table_via_waiter: false,
+    allow_bill_request: true,
+    allow_call_waiter: false,
+  });
+  const [kotSettings, setKotSettings] = useState<KotSettingsState>({
+    auto_print_kot: false,
+    printer_target: '',
+  });
   const [confirmAccount, setConfirmAccount] = useState('');
   const [showBankForm, setShowBankForm] = useState(true);
   const [fssaiForm, setFssaiForm] = useState<FssaiState>({
@@ -212,6 +268,11 @@ export default function Settings() {
   const [isUploadingRestaurant, setIsUploadingRestaurant] = useState(false);
   const [isUploadingFood, setIsUploadingFood] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [confirmSaveTitle, setConfirmSaveTitle] = useState('Save changes?');
+  const [confirmSaveDescription, setConfirmSaveDescription] = useState('Do you want to save these changes?');
+  const [pendingSaveAction, setPendingSaveAction] = useState<(() => void) | null>(null);
 
   const [baseline, setBaseline] = useState<{
     businessForm: BusinessFormState;
@@ -220,10 +281,14 @@ export default function Settings() {
     operationalHours: OperationalHoursState;
     notificationPrefs: NotificationPrefs;
     paymentForm: BankAccount;
+    kycTaxForm: KycTaxState;
+    paymentModes: PaymentModesState;
+    kotSettings: KotSettingsState;
     fssaiForm: FssaiState;
     restaurantImages: string[];
     foodImages: string[];
     offers: Offer[];
+    staffMembers: StaffMember[];
   } | null>(null);
 
   useEffect(() => {
@@ -264,6 +329,27 @@ export default function Settings() {
         account_type: 'savings',
         ...((meta?.bank_account as BankAccount) ?? {}),
       };
+      const nextKycTaxForm: KycTaxState = {
+        pan_number: '',
+        gst_registered: false,
+        gstin: '',
+        business_entity_type: 'sole_proprietorship',
+        cancelled_cheque_url: '',
+        ...((meta?.kyc_tax as KycTaxState) ?? {}),
+      };
+      const nextPaymentModes: PaymentModesState = {
+        accept_cash_at_counter: true,
+        accept_online_qr_app: true,
+        pay_at_table_via_waiter: false,
+        allow_bill_request: true,
+        allow_call_waiter: false,
+        ...((meta?.payment_modes as PaymentModesState) ?? {}),
+      };
+      const nextKotSettings: KotSettingsState = {
+        auto_print_kot: false,
+        printer_target: '',
+        ...((meta?.kot_settings as KotSettingsState) ?? {}),
+      };
       const nextFssaiForm: FssaiState = {
         license_number: '',
         expiry_date: '',
@@ -286,6 +372,17 @@ export default function Settings() {
               promo_code: String((o as Offer).promo_code ?? '').trim() || '',
             }))
         : [];
+      const rawStaffMembers = (meta?.staff_accounts as StaffMember[]) ?? [];
+      const nextStaffMembers = Array.isArray(rawStaffMembers)
+        ? rawStaffMembers
+            .filter((s) => s && typeof s === 'object')
+            .map((s) => ({
+              id: (s as StaffMember).id ?? crypto.randomUUID(),
+              name: String((s as StaffMember).name ?? '').trim(),
+              phone: String((s as StaffMember).phone ?? '').trim(),
+              role: (s as StaffMember).role === 'manager' ? 'manager' : 'staff',
+            }))
+        : [];
 
       setBusinessForm(nextBusinessForm);
       setProfileForm(nextProfileForm);
@@ -293,12 +390,16 @@ export default function Settings() {
       setOperationalHours(nextOperationalHours);
       setNotificationPrefs(nextNotificationPrefs);
       setPaymentForm(nextPaymentForm);
+      setKycTaxForm(nextKycTaxForm);
+      setPaymentModes(nextPaymentModes);
+      setKotSettings(nextKotSettings);
       setConfirmAccount('');
       setFssaiForm(nextFssaiForm);
       setShowBankForm(!nextPaymentForm.account_number); // if already saved, show summary by default
       setRestaurantImages(nextRestaurantImages);
       setFoodImages(nextFoodImages);
       setOffers(nextOffers);
+      setStaffMembers(nextStaffMembers);
 
       setBaseline({
         businessForm: nextBusinessForm,
@@ -307,10 +408,14 @@ export default function Settings() {
         operationalHours: nextOperationalHours,
         notificationPrefs: nextNotificationPrefs,
         paymentForm: nextPaymentForm,
+        kycTaxForm: nextKycTaxForm,
+        paymentModes: nextPaymentModes,
+        kotSettings: nextKotSettings,
         fssaiForm: nextFssaiForm,
         restaurantImages: nextRestaurantImages,
         foodImages: nextFoodImages,
         offers: nextOffers,
+        staffMembers: nextStaffMembers,
       });
     }
   }, [vendor]);
@@ -382,6 +487,28 @@ export default function Settings() {
     (paymentForm.account_type ?? 'savings') !== (baseline.paymentForm.account_type ?? 'savings')
   );
 
+  const kycTaxDirty = !!baseline && (
+    !sameString(kycTaxForm.pan_number, baseline.kycTaxForm.pan_number) ||
+    !!kycTaxForm.gst_registered !== !!baseline.kycTaxForm.gst_registered ||
+    !sameString(kycTaxForm.gstin, baseline.kycTaxForm.gstin) ||
+    !sameString(kycTaxForm.cancelled_cheque_url, baseline.kycTaxForm.cancelled_cheque_url) ||
+    (kycTaxForm.business_entity_type ?? 'sole_proprietorship') !==
+      (baseline.kycTaxForm.business_entity_type ?? 'sole_proprietorship')
+  );
+
+  const paymentModesDirty = !!baseline && (
+    !!paymentModes.accept_cash_at_counter !== !!baseline.paymentModes.accept_cash_at_counter ||
+    !!paymentModes.accept_online_qr_app !== !!baseline.paymentModes.accept_online_qr_app ||
+    !!paymentModes.pay_at_table_via_waiter !== !!baseline.paymentModes.pay_at_table_via_waiter ||
+    !!paymentModes.allow_bill_request !== !!baseline.paymentModes.allow_bill_request ||
+    !!paymentModes.allow_call_waiter !== !!baseline.paymentModes.allow_call_waiter
+  );
+
+  const kotSettingsDirty = !!baseline && (
+    !!kotSettings.auto_print_kot !== !!baseline.kotSettings.auto_print_kot ||
+    !sameString(kotSettings.printer_target, baseline.kotSettings.printer_target)
+  );
+
   const sameOffers = (a: Offer[], b: Offer[]) => {
     if (a.length !== b.length) return false;
     return a.every((oa, i) => {
@@ -397,6 +524,20 @@ export default function Settings() {
     });
   };
   const offersDirty = !!baseline && !sameOffers(offers, baseline.offers);
+
+  const sameStaffMembers = (a: StaffMember[], b: StaffMember[]) => {
+    if (a.length !== b.length) return false;
+    return a.every((sa, i) => {
+      const sb = b[i];
+      return (
+        sa.id === sb?.id &&
+        sa.name === sb?.name &&
+        sa.phone === sb?.phone &&
+        sa.role === sb?.role
+      );
+    });
+  };
+  const staffDirty = !!baseline && !sameStaffMembers(staffMembers, baseline.staffMembers);
 
   const sameFssai = (a: FssaiState, b: FssaiState) =>
     sameString(a.license_number, b.license_number) &&
@@ -513,6 +654,13 @@ export default function Settings() {
     setBaseline((prev) => (prev ? { ...prev, foodImages: next } : prev));
   };
 
+  const requestSaveConfirmation = (title: string, description: string, action: () => void) => {
+    setConfirmSaveTitle(title);
+    setConfirmSaveDescription(description);
+    setPendingSaveAction(() => action);
+    setConfirmSaveOpen(true);
+  };
+
   const saveBusiness = () => {
     updateMutation.mutate({
       business_name: businessForm.business_name,
@@ -570,6 +718,16 @@ export default function Settings() {
 
   const savePayment = () => {
     const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
+    const normalizedGstin = (kycTaxForm.gstin ?? '').trim().toUpperCase();
+    const shouldRequireGstin = !!kycTaxForm.gst_registered;
+    if (shouldRequireGstin && normalizedGstin.length !== 15) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid GSTIN',
+        description: 'GSTIN must be 15 characters when GST registered is enabled.',
+      });
+      return;
+    }
     updateMutation.mutate({
       metadata: {
         ...meta,
@@ -578,9 +736,40 @@ export default function Settings() {
           ifsc: paymentForm.ifsc || undefined,
           account_type: paymentForm.account_type || undefined,
         },
+        kyc_tax: {
+          pan_number: (kycTaxForm.pan_number || '').trim().toUpperCase() || undefined,
+          gst_registered: !!kycTaxForm.gst_registered,
+          gstin: shouldRequireGstin ? normalizedGstin : undefined,
+          business_entity_type: kycTaxForm.business_entity_type || 'sole_proprietorship',
+          cancelled_cheque_url: (kycTaxForm.cancelled_cheque_url || '').trim() || undefined,
+        },
+        payment_modes: {
+          accept_cash_at_counter: !!paymentModes.accept_cash_at_counter,
+          accept_online_qr_app: !!paymentModes.accept_online_qr_app,
+          pay_at_table_via_waiter: !!paymentModes.pay_at_table_via_waiter,
+          allow_bill_request: !!paymentModes.allow_bill_request,
+          allow_call_waiter: !!paymentModes.allow_call_waiter,
+        },
+        kot_settings: {
+          auto_print_kot: !!kotSettings.auto_print_kot,
+          printer_target: (kotSettings.printer_target || '').trim() || undefined,
+        },
       },
     });
-    setBaseline((prev) => (prev ? { ...prev, paymentForm: { ...paymentForm } } : prev));
+    setBaseline((prev) =>
+      prev
+        ? {
+            ...prev,
+            paymentForm: { ...paymentForm },
+            kycTaxForm: {
+              ...kycTaxForm,
+              gstin: shouldRequireGstin ? normalizedGstin : '',
+            },
+            paymentModes: { ...paymentModes },
+            kotSettings: { ...kotSettings },
+          }
+        : prev
+    );
     setConfirmAccount('');
     setShowBankForm(false);
   };
@@ -622,6 +811,43 @@ export default function Settings() {
         return o;
       })
     );
+  };
+
+  const addStaffMember = () => {
+    setStaffMembers((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), name: '', phone: '', role: 'staff' },
+    ]);
+  };
+
+  const removeStaffMember = (id: string) => {
+    setStaffMembers((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const updateStaffMember = (id: string, patch: Partial<StaffMember>) => {
+    setStaffMembers((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+    );
+  };
+
+  const saveStaffMembers = () => {
+    const sanitized = staffMembers
+      .map((s) => ({
+        id: s.id,
+        name: (s.name || '').trim(),
+        phone: (s.phone || '').trim(),
+        role: s.role === 'manager' ? 'manager' : 'staff',
+      }))
+      .filter((s) => s.name && s.phone);
+
+    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
+    updateMutation.mutate({
+      metadata: {
+        ...meta,
+        staff_accounts: sanitized,
+      },
+    });
+    setBaseline((prev) => (prev ? { ...prev, staffMembers: [...sanitized] } : prev));
   };
 
   const handleDownloadTableQR = async (tableSlug: string, tableCode: string) => {
@@ -675,6 +901,13 @@ export default function Settings() {
   const isFoodBusiness = ['restaurant', 'food', 'cafe'].includes((businessForm.business_type || '').toLowerCase());
   const savedAccountLast4 = (baseline?.paymentForm.account_number || '').slice(-4);
   const hasSavedBank = !!baseline?.paymentForm.account_number && !!baseline?.paymentForm.ifsc;
+  const hasPaymentSetupChanges = paymentDirty || kycTaxDirty || paymentModesDirty || kotSettingsDirty;
+  const bankFieldsValid =
+    !!paymentForm.account_number &&
+    !!paymentForm.ifsc &&
+    !!confirmAccount &&
+    paymentForm.account_number === confirmAccount;
+  const canSavePaymentSetup = !updateMutation.isPending && hasPaymentSetupChanges && (!paymentDirty || bankFieldsValid);
 
   const currentSection = SETTINGS_SECTIONS.find((x) => x.value === activeTab);
 
@@ -929,7 +1162,16 @@ export default function Settings() {
                 </>
               )}
 
-              <Button onClick={saveBusiness} disabled={updateMutation.isPending || !businessDirty}>
+              <Button
+                onClick={() =>
+                  requestSaveConfirmation(
+                    'Save business info?',
+                    'Do you want to save your business information changes?',
+                    saveBusiness
+                  )
+                }
+                disabled={updateMutation.isPending || !businessDirty}
+              >
                 {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save business info
               </Button>
@@ -1032,9 +1274,97 @@ export default function Settings() {
                 />
               </div>
 
-              <Button onClick={saveProfile} disabled={updateMutation.isPending || !profileDirty}>
+              <Button
+                onClick={() =>
+                  requestSaveConfirmation(
+                    'Save profile?',
+                    'Do you want to save your profile changes?',
+                    saveProfile
+                  )
+                }
+                disabled={updateMutation.isPending || !profileDirty}
+              >
                 {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save profile
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="staff" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground">Staff Accounts</CardTitle>
+              <CardDescription className={textHint}>
+                Add team members for dine-in operations with simple role assignment.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {staffMembers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No staff members added yet.</p>
+              ) : (
+                staffMembers.map((member) => (
+                  <div key={member.id} className="rounded-lg border border-border bg-card p-3 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className={textLabel}>Name</Label>
+                        <Input
+                          value={member.name}
+                          onChange={(e) => updateStaffMember(member.id, { name: e.target.value })}
+                          placeholder="Staff name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className={textLabel}>Phone</Label>
+                        <Input
+                          value={member.phone}
+                          onChange={(e) => updateStaffMember(member.id, { phone: e.target.value })}
+                          placeholder="Phone number"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className={textLabel}>Role</Label>
+                        <Select
+                          value={member.role}
+                          onValueChange={(v) => updateStaffMember(member.id, { role: v as StaffMember['role'] })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="staff">Staff</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" className="text-destructive" onClick={() => removeStaffMember(member.id)}>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+
+              <Button type="button" variant="outline" onClick={addStaffMember} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add staff member
+              </Button>
+
+              <Button
+                onClick={() =>
+                  requestSaveConfirmation(
+                    'Save staff accounts?',
+                    'Do you want to save staff and role changes?',
+                    saveStaffMembers
+                  )
+                }
+                disabled={updateMutation.isPending || !staffDirty}
+              >
+                {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save staff accounts
               </Button>
             </CardContent>
           </Card>
@@ -1168,7 +1498,16 @@ export default function Settings() {
                 <Plus className="h-4 w-4" />
                 Add offer
               </Button>
-              <Button onClick={saveOffers} disabled={updateMutation.isPending || !offersDirty}>
+              <Button
+                onClick={() =>
+                  requestSaveConfirmation(
+                    'Save offers?',
+                    'Do you want to save your offers changes?',
+                    saveOffers
+                  )
+                }
+                disabled={updateMutation.isPending || !offersDirty}
+              >
                 {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save offers
               </Button>
@@ -1235,7 +1574,16 @@ export default function Settings() {
                   />
                 </div>
               </div>
-              <Button onClick={saveOperationalHours} disabled={updateMutation.isPending || !operationsDirty}>
+              <Button
+                onClick={() =>
+                  requestSaveConfirmation(
+                    'Save hours?',
+                    'Do you want to save your operational hours changes?',
+                    saveOperationalHours
+                  )
+                }
+                disabled={updateMutation.isPending || !operationsDirty}
+              >
                 {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save hours
               </Button>
@@ -1286,7 +1634,16 @@ export default function Settings() {
                 </div>
               ))}
               <div className="pt-2">
-                <Button onClick={saveNotifications} disabled={updateMutation.isPending || !notificationsDirty}>
+                <Button
+                  onClick={() =>
+                    requestSaveConfirmation(
+                      'Save notifications?',
+                      'Do you want to save your notification preferences?',
+                      saveNotifications
+                    )
+                  }
+                  disabled={updateMutation.isPending || !notificationsDirty}
+                >
                   {updateMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -1403,7 +1760,13 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
-                      onClick={savePayment}
+                      onClick={() =>
+                        requestSaveConfirmation(
+                          'Save bank details?',
+                          'Do you want to save your bank details?',
+                          savePayment
+                        )
+                      }
                       disabled={
                         updateMutation.isPending ||
                         !paymentDirty ||
@@ -1428,6 +1791,178 @@ export default function Settings() {
                   </div>
                 </>
               )}
+
+              <Separator />
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
+                <div>
+                  <p className="text-base font-semibold text-foreground">Legal, KYC & tax</p>
+                  <p className={textHint}>
+                    Basic compliance details used for payout and taxation setup.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className={textLabel}>PAN number</Label>
+                    <Input
+                      value={kycTaxForm.pan_number ?? ''}
+                      onChange={(e) =>
+                        setKycTaxForm((p) => ({ ...p, pan_number: e.target.value.toUpperCase() }))
+                      }
+                      placeholder="e.g. ABCDE1234F"
+                      className="text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={textLabel}>Business entity type</Label>
+                    <Select
+                      value={kycTaxForm.business_entity_type ?? 'sole_proprietorship'}
+                      onValueChange={(v) =>
+                        setKycTaxForm((p) => ({ ...p, business_entity_type: v as KycTaxState['business_entity_type'] }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select entity type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_ENTITY_TYPES.map((entity) => (
+                          <SelectItem key={entity.value} value={entity.value}>
+                            {entity.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+                  <div>
+                    <p className="font-medium text-foreground">GST registered?</p>
+                    <p className={textHint}>Enable if your business has GST registration.</p>
+                  </div>
+                  <Switch
+                    checked={!!kycTaxForm.gst_registered}
+                    onCheckedChange={(checked) =>
+                      setKycTaxForm((p) => ({
+                        ...p,
+                        gst_registered: checked,
+                        gstin: checked ? p.gstin : '',
+                      }))
+                    }
+                  />
+                </div>
+                {kycTaxForm.gst_registered && (
+                  <div className="space-y-2">
+                    <Label className={textLabel}>GSTIN</Label>
+                    <Input
+                      value={kycTaxForm.gstin ?? ''}
+                      onChange={(e) => setKycTaxForm((p) => ({ ...p, gstin: e.target.value.toUpperCase() }))}
+                      placeholder="15-digit GSTIN"
+                      className="text-foreground"
+                      maxLength={15}
+                    />
+                    <p className={textHint}>Required when GST registered is enabled.</p>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label className={textLabel}>Cancelled cheque URL (optional)</Label>
+                  <Input
+                    value={kycTaxForm.cancelled_cheque_url ?? ''}
+                    onChange={(e) => setKycTaxForm((p) => ({ ...p, cancelled_cheque_url: e.target.value }))}
+                    placeholder="https://... (upload integration can be added)"
+                    className="text-foreground"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
+                <div>
+                  <p className="text-base font-semibold text-foreground">Payment collection modes</p>
+                  <p className={textHint}>Choose how customers can pay in your dine-in flow.</p>
+                </div>
+                {[
+                  {
+                    key: 'accept_cash_at_counter' as const,
+                    title: 'Accept cash at counter',
+                    desc: 'Allow cash payments at billing counter',
+                  },
+                  {
+                    key: 'accept_online_qr_app' as const,
+                    title: 'Accept online via QR/App',
+                    desc: 'Allow UPI/cards through app or QR',
+                  },
+                  {
+                    key: 'pay_at_table_via_waiter' as const,
+                    title: 'Pay at table via waiter',
+                    desc: 'Allow waiter-assisted payment at table',
+                  },
+                  {
+                    key: 'allow_bill_request' as const,
+                    title: 'Allow bill request from table',
+                    desc: 'Customers can request final bill from their phone',
+                  },
+                  {
+                    key: 'allow_call_waiter' as const,
+                    title: 'Allow call waiter from table',
+                    desc: 'Customers can call staff digitally from their phone',
+                  },
+                ].map(({ key, title, desc }) => (
+                  <div key={key} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+                    <div>
+                      <p className="font-medium text-foreground">{title}</p>
+                      <p className={textHint}>{desc}</p>
+                    </div>
+                    <Switch
+                      checked={!!paymentModes[key]}
+                      onCheckedChange={(checked) => setPaymentModes((prev) => ({ ...prev, [key]: checked }))}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-4">
+                <div>
+                  <p className="text-base font-semibold text-foreground">KOT settings</p>
+                  <p className={textHint}>Basic kitchen order ticket preferences.</p>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+                  <div>
+                    <p className="font-medium text-foreground">Auto-print KOT</p>
+                    <p className={textHint}>Automatically print a kitchen ticket when order arrives.</p>
+                  </div>
+                  <Switch
+                    checked={!!kotSettings.auto_print_kot}
+                    onCheckedChange={(checked) => setKotSettings((prev) => ({ ...prev, auto_print_kot: checked }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className={textLabel}>Printer target (optional)</Label>
+                  <Input
+                    value={kotSettings.printer_target ?? ''}
+                    onChange={(e) => setKotSettings((prev) => ({ ...prev, printer_target: e.target.value }))}
+                    placeholder="Thermal printer name / IP / bluetooth id"
+                    className="text-foreground"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() =>
+                    requestSaveConfirmation(
+                      'Save payment setup?',
+                      'Do you want to save bank, KYC and payment mode changes?',
+                      savePayment
+                    )
+                  }
+                  disabled={!canSavePaymentSetup}
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save payment setup
+                </Button>
+              </div>
 
               {isFoodBusiness && (
                 <>
@@ -1484,7 +2019,16 @@ export default function Settings() {
                     </div>
 
                     <div className="mt-4 flex items-center gap-2">
-                      <Button onClick={saveFssai} disabled={updateMutation.isPending || !fssaiDirty}>
+                      <Button
+                        onClick={() =>
+                          requestSaveConfirmation(
+                            'Save FSSAI details?',
+                            'Do you want to save your FSSAI details?',
+                            saveFssai
+                          )
+                        }
+                        disabled={updateMutation.isPending || !fssaiDirty}
+                      >
                         {updateMutation.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
@@ -1504,6 +2048,22 @@ export default function Settings() {
         </TabsContent>
         </div>
       </Tabs>
+      <ConfirmActionDialog
+        open={confirmSaveOpen}
+        onOpenChange={(open) => {
+          setConfirmSaveOpen(open);
+          if (!open) setPendingSaveAction(null);
+        }}
+        onConfirm={() => {
+          pendingSaveAction?.();
+          setConfirmSaveOpen(false);
+          setPendingSaveAction(null);
+        }}
+        title={confirmSaveTitle}
+        description={confirmSaveDescription}
+        confirmLabel="Yes, save"
+        isConfirming={updateMutation.isPending}
+      />
     </div>
   );
 }

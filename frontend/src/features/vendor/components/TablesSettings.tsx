@@ -18,6 +18,7 @@ import { useVendorTables } from '../hooks/useVendorTables';
 import type { TableConfig, ZoneKey } from '../types/tables';
 import { ZONE_LABELS } from '../types/tables';
 import { validateZoneConfig } from '../utils/tableConfigUtils';
+import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 
 const ZONES: ZoneKey[] = ['north', 'south', 'east', 'west'];
 
@@ -106,6 +107,7 @@ export function TablesSettings() {
   const canSave = validation.valid && !isSaving;
   const [savedRecently, setSavedRecently] = useState(false);
   const [zoneAllocationOpen, setZoneAllocationOpen] = useState(true);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
 
   const handleSave = useCallback(async () => {
     await saveTableConfig(config);
@@ -246,7 +248,7 @@ export function TablesSettings() {
           </p>
         )}
 
-        <Button onClick={handleSave} disabled={!canSave}>
+        <Button onClick={() => setConfirmSaveOpen(true)} disabled={!canSave}>
           {isSaving ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -263,6 +265,18 @@ export function TablesSettings() {
             'Create tables'
           )}
         </Button>
+        <ConfirmActionDialog
+          open={confirmSaveOpen}
+          onOpenChange={setConfirmSaveOpen}
+          onConfirm={async () => {
+            setConfirmSaveOpen(false);
+            await handleSave();
+          }}
+          title="Save table configuration?"
+          description="Do you want to save this table configuration?"
+          confirmLabel="Yes, save"
+          isConfirming={isSaving}
+        />
 
         {/* Table QRs - download only, no regenerate */}
         {tables.length > 0 && (

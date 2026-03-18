@@ -30,6 +30,7 @@ import {
   preloadSettings 
 } from '@/utils/preloaders';
 import TopNavbar from '@/components/common/TopNavbar';
+import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { OperationalHoursBanner } from '@/components/vendor/OperationalHoursBanner';
 import { VendorStatusProvider, useVendorStatusContext } from '@/features/vendor/context/VendorStatusContext';
@@ -73,6 +74,7 @@ const SIDEBAR_WIDTH_COLLAPSED = 72; // w-[72px]
 const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showGoOnlineConfirm, setShowGoOnlineConfirm] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const {
@@ -158,7 +160,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({ children }) => {
               variant="opening"
               minutesUntil={operationalInfo.minutesUntilOpening}
               timeFormatted={operationalInfo.openingTimeFormatted}
-              onAction={() => goOnlineWithExtension(30)}
+              onAction={() => setShowGoOnlineConfirm(true)}
               isActioning={isToggling}
               disabled={!canGoOnline}
             />
@@ -386,6 +388,18 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({ children }) => {
         </main>
         </div>
       </div>
+      <ConfirmActionDialog
+        open={showGoOnlineConfirm}
+        onOpenChange={setShowGoOnlineConfirm}
+        onConfirm={async () => {
+          setShowGoOnlineConfirm(false);
+          await goOnlineWithExtension(30);
+        }}
+        title="Go online?"
+        description="Your store will become live to customers and can start receiving orders."
+        confirmLabel="Yes, go online"
+        isConfirming={isToggling}
+      />
     </div>
   );
 };

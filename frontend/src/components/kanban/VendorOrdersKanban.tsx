@@ -489,11 +489,17 @@ export const VendorOrdersKanban: React.FC<VendorOrdersKanbanProps> = ({ vendorId
                 Has cash been collected from the customer? Please verify manually before proceeding. Do not mark as Ready or Complete for unpaid orders.
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
+            <AlertDialogFooter className="!flex-row items-center justify-end gap-3">
+              <AlertDialogCancel
+                className="mt-0 h-11 min-w-[130px]"
+                onClick={() => setPendingStatusChange(null)}
+              >
                 No, not yet
               </AlertDialogCancel>
-              <AlertDialogAction onClick={() => pendingStatusChange && executeStatusChange(pendingStatusChange.orderId, pendingStatusChange.newStatus, true)}>
+              <AlertDialogAction
+                className="h-11 min-w-[130px]"
+                onClick={() => pendingStatusChange && executeStatusChange(pendingStatusChange.orderId, pendingStatusChange.newStatus, true)}
+              >
                 Yes, received
               </AlertDialogAction>
             </AlertDialogFooter>

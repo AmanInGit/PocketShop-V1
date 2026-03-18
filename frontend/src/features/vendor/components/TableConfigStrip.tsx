@@ -12,6 +12,7 @@ import { ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react';
 import type { TableConfig, ZoneKey } from '../types/tables';
 import { ZONE_LABELS } from '../types/tables';
 import { validateZoneConfig } from '../utils/tableConfigUtils';
+import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 
 const ZONES: ZoneKey[] = ['north', 'south', 'east', 'west'];
 
@@ -35,6 +36,7 @@ export function TableConfigStrip({
   });
   const [savedRecently, setSavedRecently] = useState(false);
   const [zoneAllocationOpen, setZoneAllocationOpen] = useState(false);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
 
   useEffect(() => {
     if (tableConfig) {
@@ -163,7 +165,7 @@ export function TableConfigStrip({
         )}
       </div>
 
-      <Button onClick={handleSave} disabled={!canSave} className="shrink-0">
+      <Button onClick={() => setConfirmSaveOpen(true)} disabled={!canSave} className="shrink-0">
         {isSaving ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -180,6 +182,18 @@ export function TableConfigStrip({
           'Create tables'
         )}
       </Button>
+      <ConfirmActionDialog
+        open={confirmSaveOpen}
+        onOpenChange={setConfirmSaveOpen}
+        onConfirm={async () => {
+          setConfirmSaveOpen(false);
+          await handleSave();
+        }}
+        title="Save table configuration?"
+        description="Do you want to save this table configuration?"
+        confirmLabel="Yes, save"
+        isConfirming={isSaving}
+      />
     </div>
   );
 }

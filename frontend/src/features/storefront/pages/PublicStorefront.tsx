@@ -14,7 +14,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { LazyImage } from "@/components/ui/lazy-image";
-import { ShoppingCart, Store, MapPin, Search, X, Plus, Minus, User, LogOut, LogIn, Sun, Moon } from "lucide-react";
+import { ShoppingCart, Store, MapPin, Search, X, Plus, Minus, User, LogOut, LogIn, Sun, Moon, Receipt } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { useCart } from "@/contexts/CartContext";
@@ -90,6 +90,11 @@ function MenuItemRow({
         <p className="text-sm font-semibold text-foreground">₹{product.price}</p>
         {product.description && (
           <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>
+        )}
+        {product.spicy_level && (
+          <p className="text-[11px] text-orange-600 dark:text-orange-400 font-medium capitalize">
+            {product.spicy_level} spicy
+          </p>
         )}
         {!isOutOfStock && !isRequirementBased && product.stock_quantity != null && (
           <p className="text-[11px] text-muted-foreground">
@@ -305,6 +310,8 @@ export default function PublicStorefront() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string>("");
   const [onlyVeg, setOnlyVeg] = useState(false);
+  const [isRequestingBill, setIsRequestingBill] = useState(false);
+  const [lastBillRequestAt, setLastBillRequestAt] = useState<number | null>(null);
   const { theme, toggleTheme } = useTheme();
 
   // Check auth status
@@ -386,6 +393,9 @@ export default function PublicStorefront() {
   });
 
   const tableCode = isPickup ? 'PICKUP' : (tableRecord?.table_code ?? null);
+  const paymentModes = ((vendor?.metadata as Record<string, unknown>)?.payment_modes as Record<string, unknown> | undefined) ?? {};
+  const allowBillRequest = (paymentModes.allow_bill_request as boolean | undefined) ?? true;
+  const allowCallWaiter = (paymentModes.allow_call_waiter as boolean | undefined) ?? false;
   const reopenText = useMemo(() => {
     if (!vendor) return null;
     const wd = vendor.working_days as string[] | undefined;
@@ -524,6 +534,60 @@ export default function PublicStorefront() {
     });
     return { groups: sidebarGroups, categoryKeys: sorted };
   }, [sidebarGroups]);
+
+  const handleRequestBill = async () => {
+    if (!vendor?.user_id || !vendor?.id || !tableCode || tableCode === 'PICKUP' || isRequestingBill) return;
+
+    const now = Date.now();
+    if (lastBillRequestAt && now - lastBillRequestAt < 60_000) {
+      toast.info('Bill request already sent. Please wait a minute.');
+      return;
+    }
+
+    try {
+      setIsRequestingBill(true);
+      const { error } = await supabase.from('notifications').insert({
+        user_id: vendor.user_id,
+        vendor_id: vendor.id,
+        title: 'Bill requested',
+        message: `Table ${tableCode} requested the final bill.`,
+        type: 'bill_request',
+        is_read: false,
+      });
+      if (error) throw error;
+
+      setLastBillRequestAt(now);
+      toast.success('Bill request sent to restaurant staff.');
+    } catch (error) {
+      console.error('Failed to request bill:', error);
+      toast.error('Failed to send bill request. Please try again.');
+    } finally {
+      setIsRequestingBill(false);
+    }
+  };
+
+  const handleCallWaiter = async () => {
+    if (!vendor?.user_id || !vendor?.id || !tableCode || tableCode === 'PICKUP' || isRequestingBill) return;
+
+    try {
+      setIsRequestingBill(true);
+      const { error } = await supabase.from('notifications').insert({
+        user_id: vendor.user_id,
+        vendor_id: vendor.id,
+        title: 'Waiter called',
+        message: `Table ${tableCode} requested waiter assistance.`,
+        type: 'call_waiter',
+        is_read: false,
+      });
+      if (error) throw error;
+      toast.success('Waiter request sent.');
+    } catch (error) {
+      console.error('Failed to call waiter:', error);
+      toast.error('Failed to send waiter request. Please try again.');
+    } finally {
+      setIsRequestingBill(false);
+    }
+  };
 
   const handleCheckout = async (
     customerData: CheckoutFormData,
@@ -832,6 +896,40 @@ export default function PublicStorefront() {
             <div className="mb-6">
               <ActiveOrdersWidget vendorId={vendorId!} />
             </div>
+
+            {(allowBillRequest || allowCallWaiter) && tableCode && tableCode !== 'PICKUP' && (
+              <div className="mb-6 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-foreground">Need staff help?</p>
+                    <p className="text-sm text-muted-foreground">Quick requests for Table {tableCode}.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {allowCallWaiter && (
+                      <Button
+                        onClick={handleCallWaiter}
+                        disabled={isRequestingBill}
+                        className="gap-2"
+                        variant="outline"
+                      >
+                        {isRequestingBill ? 'Sending...' : 'Call waiter'}
+                      </Button>
+                    )}
+                    {allowBillRequest && (
+                      <Button
+                        onClick={handleRequestBill}
+                        disabled={isRequestingBill}
+                        className="gap-2"
+                        variant="outline"
+                      >
+                        <Receipt className="h-4 w-4" />
+                        {isRequestingBill ? 'Sending...' : 'Request bill'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Offers carousel - auto-sliding when vendor has offers */}
             {offers.length > 0 && (

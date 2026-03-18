@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Download, Pencil, Check, GripVertical } from 'lucide-react';
 import QRCode from 'qrcode';
+import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 import type { VendorTable } from '../types/tables';
 import type { ZoneKey } from '../types/tables';
 import { ZONE_LABELS, ZONE_PREFIX } from '../types/tables';
@@ -192,6 +193,7 @@ export function VirtualStorefrontTables({
   isSavingLayout,
 }: VirtualStorefrontTablesProps) {
   const [isEditMode, setIsEditMode] = useState(false);
+  const [confirmSaveLayoutOpen, setConfirmSaveLayoutOpen] = useState(false);
   const [localTablesByZone, setLocalTablesByZone] = useState<Record<ZoneKey, VendorTable[]>>(() => ({
     north: [],
     south: [],
@@ -309,7 +311,7 @@ export function VirtualStorefrontTables({
             </Button>
           ) : (
             <>
-              <Button size="sm" onClick={handleSaveLayout} disabled={isSavingLayout}>
+              <Button size="sm" onClick={() => setConfirmSaveLayoutOpen(true)} disabled={isSavingLayout}>
                 <Check className="mr-2 h-4 w-4" />
                 {isSavingLayout ? 'Saving…' : 'Save layout'}
               </Button>
@@ -377,6 +379,18 @@ export function VirtualStorefrontTables({
           </div>
         </div>
       </DndContext>
+      <ConfirmActionDialog
+        open={confirmSaveLayoutOpen}
+        onOpenChange={setConfirmSaveLayoutOpen}
+        onConfirm={async () => {
+          setConfirmSaveLayoutOpen(false);
+          await handleSaveLayout();
+        }}
+        title="Save table layout?"
+        description="Do you want to save this table layout?"
+        confirmLabel="Yes, save layout"
+        isConfirming={isSavingLayout}
+      />
     </div>
   );
 }
