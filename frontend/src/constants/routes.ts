@@ -10,6 +10,9 @@ export const ROUTES = {
   HOME: '/',
   BUSINESS: '/business',
   ABOUT: '/about-us',
+  BLOG: '/blog',
+  HELP_CENTER: '/help-center',
+  DOCUMENTATION: '/documentation',
   
   // Authentication routes
   LOGIN: '/login',

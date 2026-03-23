@@ -9,6 +9,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Linkedin, Github, Mail } from 'lucide-react';
 import Logo from '@/features/common/components/Logo';
+import { ROUTES } from '@/constants/routes';
 
 // Highlight keywords in text (Magicpin-style) - rose-600 for light bg, rose-400 for dark
 const Highlight: React.FC<{ children: React.ReactNode; light?: boolean }> = ({ children, light }) => (
@@ -244,7 +245,7 @@ const AboutUs: React.FC = () => {
             <p className="text-xl font-semibold text-white">
               D.Y. Patil College of Engineering, Kolhapur
             </p>
-            <p className="text-white/60 text-sm mt-1">Final Year Engineering Project • 2025</p>
+            <p className="text-white/60 text-sm mt-1">Final Year Engineering Project • 2026</p>
           </div>
         </div>
       </main>
@@ -271,8 +272,7 @@ const AboutUs: React.FC = () => {
               <Logo size="lg" />
               <p className="text-white/80 text-lg font-medium mt-4 mb-3">Discover Local, Shop Offline</p>
               <p className="text-white/60 text-sm leading-relaxed max-w-md mb-6">
-                Discover local deals, explore nearby stores, and shop offline. All powered by our innovative
-                QR platform.
+                Get handpicked nearby deals, discover stores that match your plans, and shop offline with confidence.
               </p>
               <div className="flex gap-4">
                 <a href="#" className="text-white/70 hover:text-white transition-colors" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
@@ -308,9 +308,9 @@ const AboutUs: React.FC = () => {
             <div>
               <h3 className="text-white font-semibold text-lg mb-4">Resources</h3>
               <ul className="space-y-3">
-                <li><a href="#" className="text-white/70 hover:text-white text-sm">Blog</a></li>
-                <li><a href="#" className="text-white/70 hover:text-white text-sm">Support</a></li>
-                <li><a href="#" className="text-white/70 hover:text-white text-sm">Documentation</a></li>
+                <li><Link to={ROUTES.BLOG} className="text-white/70 hover:text-white text-sm">Blog</Link></li>
+                <li><Link to={ROUTES.HELP_CENTER} className="text-white/70 hover:text-white text-sm">Help Center</Link></li>
+                <li><Link to={ROUTES.DOCUMENTATION} className="text-white/70 hover:text-white text-sm">Documentation</Link></li>
               </ul>
             </div>
             <div>
@@ -325,7 +325,7 @@ const AboutUs: React.FC = () => {
 
           <div className="border-t border-white/10 pt-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-              <p className="text-white/60 text-sm">© 2025 PocketShop. All rights reserved.</p>
+              <p className="text-white/60 text-sm">© 2026 PocketShop. All rights reserved.</p>
               <p className="text-white/60 text-sm">
                 Made with <span className="text-rose-500">❤️</span> for local businesses
               </p>

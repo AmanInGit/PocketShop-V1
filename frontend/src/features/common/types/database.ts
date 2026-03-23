@@ -5,7 +5,7 @@
  * These types are generated based on the actual database structure and provide
  * type safety for all database operations.
  * 
- * Generated: 2025-11-10T06:04:42.814Z
+ * Generated: 2026-11-10T06:04:42.814Z
  * Project: https://ovfcyvyavpzkijyfhezp.supabase.co
  */
 

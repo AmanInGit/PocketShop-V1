@@ -126,7 +126,7 @@ const BusinessLandingPage: React.FC = () => {
               </button>
               <button
                 onClick={handleGetStarted}
-                className="bg-pink-500 hover:bg-pink-600 text-white px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors"
+                className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 text-white px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-colors"
               >
                 Get Started
               </button>
@@ -330,7 +330,7 @@ const BusinessLandingPage: React.FC = () => {
             <div className="flex gap-4 justify-center">
               <button
                 onClick={handleGetStarted}
-                className="bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors shadow-lg"
+                className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors shadow-lg"
               >
                 Sign Up Now
               </button>
@@ -473,8 +473,8 @@ const BusinessLandingPage: React.FC = () => {
                     </a>
                   </li>
                   <li>
-                    <a 
-                      href="#" 
+                    <Link 
+                      to={ROUTES.HELP_CENTER}
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -488,7 +488,7 @@ const BusinessLandingPage: React.FC = () => {
                       </span>
                       <span className="absolute bottom-0 left-0 h-0.5 bg-pink-500 w-0 
                                        transition-all duration-300 group-hover:w-full"></span>
-                    </a>
+                    </Link>
                   </li>
                 </ul>
               </div>
@@ -532,8 +532,8 @@ const BusinessLandingPage: React.FC = () => {
                     </a>
                   </li>
                   <li>
-                    <a 
-                      href="#" 
+                    <Link 
+                      to={ROUTES.DOCUMENTATION}
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -547,11 +547,11 @@ const BusinessLandingPage: React.FC = () => {
                       </span>
                       <span className="absolute bottom-0 left-0 h-0.5 bg-pink-500 w-0 
                                        transition-all duration-300 group-hover:w-full"></span>
-                    </a>
+                    </Link>
                   </li>
                   <li>
-                    <a 
-                      href="#" 
+                    <Link 
+                      to={ROUTES.BLOG}
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -565,7 +565,7 @@ const BusinessLandingPage: React.FC = () => {
                       </span>
                       <span className="absolute bottom-0 left-0 h-0.5 bg-pink-500 w-0 
                                        transition-all duration-300 group-hover:w-full"></span>
-                    </a>
+                    </Link>
                   </li>
                   <li>
                     <a 
@@ -691,7 +691,7 @@ const BusinessLandingPage: React.FC = () => {
           <div className="border-t border-white/10 pt-8 mt-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <p className="text-white/60 text-sm text-center md:text-left mb-4 md:mb-0">
-                © 2025 PocketShop. All rights reserved.
+                © 2026 PocketShop. All rights reserved.
               </p>
               <p className="text-white/60 text-sm text-center md:text-right">
                 Made with <span className="text-pink-500">❤️</span> for local businesses

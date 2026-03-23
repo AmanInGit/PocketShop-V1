@@ -12,6 +12,7 @@ import { ROUTES } from '@/constants/routes';
 import { useBestOffer } from '@/hooks/useBestOffer';
 import { GOOGLE_MAPS_LIBRARIES } from '@/constants/maps';
 import { useLoadScript } from '@react-google-maps/api';
+import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
 import Logo from '@/features/common/components/Logo';
 import LocationDetector, { LocationDetectorRef } from '@/features/common/components/LocationDetector';
 import PlacesAutocomplete from '@/features/common/components/PlacesAutocomplete';
@@ -47,8 +48,32 @@ const LandingPage: React.FC = () => {
     company: false,
   });
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const navigate = useNavigate();
-  const { bestOffer, isLoading: bestOfferLoading } = useBestOffer();
+  const { landingOffers, isLoading: bestOfferLoading } = useBestOffer();
+  const [carouselApi, setCarouselApi] = useState<any>(null);
+  const [isCarouselPaused, setIsCarouselPaused] = useState(false);
+
+  useEffect(() => {
+    if (!carouselApi) return;
+    if (landingOffers.length <= 2) return;
+    if (isCarouselPaused) return;
+
+    const intervalId = window.setInterval(() => {
+      // Auto-advance: show next pair (with 2-wide viewport) by scrolling one slide.
+      if (carouselApi.canScrollNext && carouselApi.canScrollNext()) {
+        carouselApi.scrollNext();
+        return;
+      }
+
+      // If we reached the end, restart from the beginning to keep rotation going.
+      if (carouselApi.scrollTo) {
+        carouselApi.scrollTo(0);
+      }
+    }, 3500);
+
+    return () => window.clearInterval(intervalId);
+  }, [carouselApi, landingOffers.length, isCarouselPaused]);
 
   const clearLocation = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -75,6 +100,18 @@ const LandingPage: React.FC = () => {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+
+    return () => {
+      mediaQuery.removeEventListener('change', updateViewport);
     };
   }, []);
 
@@ -114,6 +151,7 @@ const LandingPage: React.FC = () => {
 
   // Handle location detection
   const handleLocationDetected = (location: { latitude: number; longitude: number; address?: string }) => {
+    // TODO: Integrate backend geolocation coordinates API for persistent, server-verified location data.
     setUserLocation({ latitude: location.latitude, longitude: location.longitude });
     if (location.address) {
       setSearchLocation(location.address);
@@ -125,6 +163,7 @@ const LandingPage: React.FC = () => {
 
   // Handle place selection from autocomplete
   const handlePlaceSelected = (place: { address: string; latitude: number; longitude: number }) => {
+    // TODO: Connect search query flow to backend API to return live vendors/deals for this selected location.
     setSearchLocation(place.address);
     setUserLocation({ latitude: place.latitude, longitude: place.longitude });
   };
@@ -256,12 +295,18 @@ const LandingPage: React.FC = () => {
               >
                 For Business
               </Link>
+              <Link
+                to={ROUTES.BLOG}
+                className="text-white/90 hover:text-white text-sm font-medium transition-colors"
+              >
+                Blog
+              </Link>
             </nav>
 
             {/* Right Side - Sign In Button (Magicpin Style: Simple Pink Button) */}
             <button
               onClick={handleLoginClick}
-              className="bg-pink-500 hover:bg-pink-600 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm font-medium transition-colors shadow-lg"
+              className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm font-medium transition-colors shadow-lg"
             >
               Sign In
             </button>
@@ -294,13 +339,22 @@ const LandingPage: React.FC = () => {
                 >
                   For Business
                 </Link>
-                <button
-                  onClick={handleInstallApp}
-                  className="flex items-center gap-2 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors px-4 py-2.5 rounded-lg text-left"
+                <Link
+                  to={ROUTES.BLOG}
+                  className="text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors px-4 py-2.5 rounded-lg"
+                  onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Install App</span>
-                </button>
+                  Blog
+                </Link>
+                {isMobileViewport && (
+                  <button
+                    onClick={handleInstallApp}
+                    className="flex items-center gap-2 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors px-4 py-2.5 rounded-lg text-left"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Install as App</span>
+                  </button>
+                )}
               </div>
             </nav>
           )}
@@ -390,12 +444,12 @@ const LandingPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Unified Search Bar - Magicpin Style: Large and Prominent */}
-          <div className="max-w-4xl mx-auto mb-8 md:mb-12">
+          {/* Unified Search Bar - Cleaner and less bulky */}
+          <div className="max-w-3xl mx-auto mb-8 md:mb-12">
             {/* Desktop Search Bar */}
-            <div className="hidden md:flex bg-white rounded-2xl p-1.5 shadow-2xl items-center">
+            <div className="hidden md:flex bg-white rounded-xl p-1 shadow-2xl items-center">
               {/* Location Section - Interactive with LocationDetector */}
-              <div className="flex items-center gap-3 px-5 py-5 border-r border-gray-200">
+              <div className="flex items-center gap-3 px-4 py-3.5 border-r border-gray-200">
                 <svg
                   className="w-5 h-5 text-red-500 flex-shrink-0"
                   fill="none"
@@ -445,7 +499,7 @@ const LandingPage: React.FC = () => {
               </div>
               
               {/* Main Search Input - Autocomplete */}
-              <div className="flex items-center gap-3 px-5 py-5 flex-1">
+              <div className="flex items-center gap-3 px-4 py-3.5 flex-1">
                 <svg
                   className="w-5 h-5 text-gray-400 flex-shrink-0"
                   fill="none"
@@ -460,6 +514,7 @@ const LandingPage: React.FC = () => {
                   />
                 </svg>
                 <PlacesAutocomplete
+                  // TODO: Hook this search input to backend query endpoint once API is available.
                   onPlaceSelected={handlePlaceSelected}
                   initialLocation={userLocation || undefined}
                   className="flex-1"
@@ -469,7 +524,7 @@ const LandingPage: React.FC = () => {
             </div>
 
             {/* Mobile Search Bar - Magicpin Style: Large, Clean, Prominent */}
-            <div className="md:hidden bg-white rounded-xl p-4 shadow-2xl border border-gray-100">
+            <div className="md:hidden bg-white rounded-xl p-3 shadow-2xl border border-gray-100">
               {/* Location Section - Top Row */}
               <div 
                 className="flex items-center gap-2.5 px-2 py-2.5 mb-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50 rounded-t-lg transition-colors"
@@ -497,7 +552,7 @@ const LandingPage: React.FC = () => {
                 <div className="flex flex-col flex-1 min-w-0">
                   <span className="text-xs text-gray-500 font-medium">Location</span>
                   <span className="text-sm font-semibold text-gray-800 truncate">
-                    {searchLocation || 'Select Location'}
+                    {searchLocation || 'Detect Location'}
                   </span>
                 </div>
                 {searchLocation ? (
@@ -519,6 +574,7 @@ const LandingPage: React.FC = () => {
               {/* Hidden LocationDetector for Mobile */}
               <div className="hidden">
                 <LocationDetector
+                  // TODO: Use coordinate lookup API to enrich and validate detected mobile location.
                   ref={mobileLocationBtnRef}
                   onLocationDetected={handleLocationDetected}
                 />
@@ -687,59 +743,108 @@ const LandingPage: React.FC = () => {
         </svg>
       </div>
 
-      {/* Promotional Banner Section - Best offer from restaurants (highest discount) */}
-      {!bestOfferLoading && bestOffer && (
-      <section className="relative z-10 bg-white py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="relative bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl p-8 md:p-12 border-2 border-purple-100 shadow-xl">
-            <div className="flex flex-col md:grid md:grid-cols-2 gap-8 items-center">
-              {/* Left - Partner Logo/Brand */}
-              <div className="text-center md:text-left order-1 md:order-1">
-                <div className="inline-block bg-white rounded-2xl p-3 shadow-md mb-3">
-                  {bestOffer.vendorLogoUrl ? (
-                    <img
-                      src={bestOffer.vendorLogoUrl}
-                      alt={bestOffer.vendorName}
-                      className="w-16 h-16 md:w-20 md:h-20 object-cover rounded-xl"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center">
-                      <span className="text-white text-lg md:text-xl font-bold">
-                        {bestOffer.vendorName.slice(0, 2).toUpperCase()}
-                      </span>
+      {/* Promotional Banner Section - Best landing offers from opted-in vendors */}
+      {!bestOfferLoading && landingOffers.length > 0 && (
+        <section className="relative z-10 bg-white py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {landingOffers.length === 1 ? (
+              <div className="relative bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl p-7 sm:p-10 md:p-12 border-2 border-purple-100 shadow-xl">
+                <div className="flex flex-col md:grid md:grid-cols-2 gap-8 items-center">
+                  <div className="text-center md:text-left">
+                    <div className="inline-block bg-white rounded-2xl p-3 shadow-md mb-3">
+                      {landingOffers[0].vendorLogoUrl ? (
+                        <img
+                          src={landingOffers[0].vendorLogoUrl}
+                          alt={landingOffers[0].vendorName}
+                          className="w-16 h-16 md:w-20 md:h-20 object-cover rounded-xl"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center">
+                          <span className="text-white text-lg md:text-xl font-bold">
+                            {landingOffers[0].vendorName.slice(0, 2).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                    <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-1">{landingOffers[0].vendorName}</h3>
+                    <p className="text-gray-600 text-xs md:text-sm">Featured Partner</p>
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-2 leading-tight">
+                      {landingOffers[0].offer.type === 'flat' ? (
+                        <>Flat <span className="text-pink-600">₹{landingOffers[0].offer.value}</span> off</>
+                      ) : (
+                        <>
+                          {landingOffers[0].offer.value}% off
+                          {landingOffers[0].offer.max_discount ? <span className="text-pink-600"> up to ₹{landingOffers[0].offer.max_discount}</span> : null}
+                        </>
+                      )}
+                    </h3>
+                    <p className="text-sm md:text-base text-gray-600 mb-4">
+                      on purchase above ₹{landingOffers[0].offer.min_order.toLocaleString('en-IN')}
+                    </p>
+                    <Link
+                      to={`/storefront/${landingOffers[0].vendorId}`}
+                      className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg"
+                    >
+                      Explore now
+                    </Link>
+                  </div>
                 </div>
-                <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-1">{bestOffer.vendorName}</h3>
-                <p className="text-gray-600 text-xs md:text-sm">Partner Restaurant</p>
               </div>
-
-              {/* Center - Offer (Hero) */}
-              <div className="text-center order-2 md:order-2">
-                <h3 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-2 leading-tight">
-                  {bestOffer.offer.type === 'flat' ? (
-                    <>Flat <span className="text-pink-600">₹{bestOffer.offer.value}</span> off</>
-                  ) : (
-                    <>{bestOffer.offer.value}% off{bestOffer.offer.max_discount ? <><span className="text-pink-600"> up to ₹{bestOffer.offer.max_discount}</span></> : null}</>
-                  )}
-                </h3>
-                <p className="text-sm md:text-base text-gray-600 mb-4">
-                  on purchase above ₹{bestOffer.offer.min_order.toLocaleString('en-IN')}
-                </p>
-                <Link
-                  to={`/storefront/${bestOffer.vendorId}`}
-                  className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg"
-                >
-                  Explore now
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
-              </div>
-            </div>
+            ) : (
+              <Carousel
+                opts={{ align: 'start', loop: true }}
+                className="w-full"
+                setApi={setCarouselApi}
+                onMouseEnter={() => setIsCarouselPaused(true)}
+                onMouseLeave={() => setIsCarouselPaused(false)}
+              >
+                <CarouselContent className="ml-0">
+                  {landingOffers.map((offerCard) => (
+                    <CarouselItem
+                      key={`${offerCard.vendorId}-${offerCard.offer.id}`}
+                      className="basis-1/2 px-2"
+                    >
+                      <div className="h-full rounded-3xl border border-purple-100 bg-gradient-to-br from-white to-purple-50 p-4 sm:p-6 md:p-7 shadow-md">
+                        <div className="mb-3 flex items-center gap-3">
+                          {offerCard.vendorLogoUrl ? (
+                            <img
+                              src={offerCard.vendorLogoUrl}
+                              alt={offerCard.vendorName}
+                              className="h-12 w-12 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-500 text-white flex items-center justify-center font-semibold">
+                              {offerCard.vendorName.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{offerCard.vendorName}</p>
+                          </div>
+                        </div>
+                        <p className="text-2xl font-extrabold text-gray-900 leading-tight">
+                          {offerCard.offer.type === 'flat'
+                            ? `Flat ₹${offerCard.offer.value} off`
+                            : `${offerCard.offer.value}% off${offerCard.offer.max_discount ? ` up to ₹${offerCard.offer.max_discount}` : ''}`}
+                        </p>
+                        <p className="mt-2 text-xs text-gray-600">
+                          Min order ₹{offerCard.offer.min_order.toLocaleString('en-IN')}
+                        </p>
+                        <Link
+                          to={`/storefront/${offerCard.vendorId}`}
+                          className="mt-4 inline-flex rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
+                        >
+                          View Offer
+                        </Link>
+                      </div>
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+              </Carousel>
+            )}
           </div>
-        </div>
-      </section>
+        </section>
       )}
 
       {/* Split View - Customer & Business Sections */}
@@ -931,8 +1036,7 @@ const LandingPage: React.FC = () => {
                 Discover Local, Shop Offline
               </p>
               <p className="text-white/60 text-sm leading-relaxed max-w-md mb-6">
-                Discover local deals, explore nearby stores, and shop offline. 
-                All powered by our innovative QR platform.
+                Find trusted nearby deals, compare offers quickly, and step out with a clear plan that saves you money on every visit.
               </p>
               
               {/* Social Media Icons - No Dark Boxes */}
@@ -1000,7 +1104,7 @@ const LandingPage: React.FC = () => {
                 <ul className={`space-y-3 mt-6 ${footerAccordions.platform ? 'block' : 'hidden md:block'}`}>
                   <li>
                     <a 
-                      href="#" 
+                      href="#"
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1018,7 +1122,7 @@ const LandingPage: React.FC = () => {
                   </li>
                   <li>
                     <a 
-                      href="#" 
+                      href="#"
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1036,7 +1140,7 @@ const LandingPage: React.FC = () => {
                   </li>
                   <li>
                     <a 
-                      href="#" 
+                      href="#"
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1054,7 +1158,7 @@ const LandingPage: React.FC = () => {
                   </li>
                   <li>
                     <a 
-                      href="#" 
+                      href="#"
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1094,8 +1198,8 @@ const LandingPage: React.FC = () => {
                 </button>
                 <ul className={`space-y-3 mt-6 ${footerAccordions.resources ? 'block' : 'hidden md:block'}`}>
                   <li>
-                    <a 
-                      href="#" 
+                    <Link 
+                      to={ROUTES.HELP_CENTER}
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1109,11 +1213,11 @@ const LandingPage: React.FC = () => {
                       </span>
                       <span className="absolute bottom-0 left-0 h-0.5 bg-pink-500 w-0 
                                        transition-all duration-300 group-hover:w-full"></span>
-                    </a>
+                    </Link>
                   </li>
                   <li>
-                    <a 
-                      href="#" 
+                    <Link 
+                      to={ROUTES.DOCUMENTATION}
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1127,11 +1231,11 @@ const LandingPage: React.FC = () => {
                       </span>
                       <span className="absolute bottom-0 left-0 h-0.5 bg-pink-500 w-0 
                                        transition-all duration-300 group-hover:w-full"></span>
-                    </a>
+                    </Link>
                   </li>
                   <li>
-                    <a 
-                      href="#" 
+                    <Link 
+                      to={ROUTES.BLOG}
                       className="footer-link group relative inline-block text-white/70 text-sm
                                  transition-all duration-300 hover:text-white"
                     >
@@ -1145,7 +1249,7 @@ const LandingPage: React.FC = () => {
                       </span>
                       <span className="absolute bottom-0 left-0 h-0.5 bg-pink-500 w-0 
                                        transition-all duration-300 group-hover:w-full"></span>
-                    </a>
+                    </Link>
                   </li>
                   <li>
                     <a 
@@ -1271,7 +1375,7 @@ const LandingPage: React.FC = () => {
           <div className="border-t border-white/10 pt-8 mt-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <p className="text-white/60 text-sm text-center md:text-left mb-4 md:mb-0">
-                © 2025 PocketShop. All rights reserved.
+                © 2026 PocketShop. All rights reserved.
               </p>
               <p className="text-white/60 text-sm text-center md:text-right">
                 Made with <span className="text-pink-500">❤️</span> for local businesses

@@ -12,6 +12,9 @@ import type { RouteConfig } from './types';
 import LandingPage from '@/app/pages/LandingPage';
 import BusinessLandingPage from '@/app/pages/BusinessLandingPage';
 import AboutUs from '@/app/pages/AboutUs';
+import BlogPlaceholder from '@/app/pages/BlogPlaceholder';
+import HelpCenterPage from '@/app/pages/HelpCenterPage';
+import DocumentationPlaceholder from '@/app/pages/DocumentationPlaceholder';
 import NotFound from '@/app/pages/NotFound';
 import Offline from '@/app/pages/Offline';
 import LoginPage from '@/features/auth/pages/LoginPage';
@@ -54,6 +57,30 @@ export const publicRoutes: RouteConfig[] = [
     accessLevel: 'public',
     eager: true,
     breadcrumbs: [{ label: 'Home', path: ROUTES.HOME }, { label: 'About Us' }],
+  },
+  {
+    path: ROUTES.BLOG,
+    component: BlogPlaceholder,
+    title: 'Blog - PocketShop',
+    accessLevel: 'public',
+    eager: true,
+    breadcrumbs: [{ label: 'Home', path: ROUTES.HOME }, { label: 'Blog' }],
+  },
+  {
+    path: ROUTES.HELP_CENTER,
+    component: HelpCenterPage,
+    title: 'Help Center - PocketShop',
+    accessLevel: 'public',
+    eager: true,
+    breadcrumbs: [{ label: 'Home', path: ROUTES.HOME }, { label: 'Help Center' }],
+  },
+  {
+    path: ROUTES.DOCUMENTATION,
+    component: DocumentationPlaceholder,
+    title: 'Documentation - PocketShop',
+    accessLevel: 'public',
+    eager: true,
+    breadcrumbs: [{ label: 'Home', path: ROUTES.HOME }, { label: 'Documentation' }],
   },
   {
     path: ROUTES.LOGIN,

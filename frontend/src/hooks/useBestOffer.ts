@@ -33,12 +33,13 @@ function getEffectiveAmount(o: OfferItem): number {
 
 export function useBestOffer(): {
   bestOffer: BestOfferResult | null;
+  landingOffers: BestOfferResult[];
   isLoading: boolean;
   error: Error | null;
 } {
-  const { data: bestOffer, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['best-offer'],
-    queryFn: async (): Promise<BestOfferResult | null> => {
+    queryFn: async (): Promise<{ bestOffer: BestOfferResult | null; landingOffers: BestOfferResult[] }> => {
       const { data, error: fetchError } = await supabase
         .from('vendor_profiles')
         .select('id, business_name, logo_url, metadata')
@@ -47,33 +48,57 @@ export function useBestOffer(): {
       if (fetchError) throw fetchError;
 
       const vendors = data ?? [];
-      const candidates: BestOfferResult[] = [];
+      const bestOfferPerVendor: BestOfferResult[] = [];
 
       for (const v of vendors) {
         const meta = (v.metadata ?? {}) as Record<string, unknown>;
+        if (!meta.appear_on_dashboard) continue;
+
         const rawOffers = meta?.offers as OfferItem[] | undefined;
         if (!Array.isArray(rawOffers) || rawOffers.length === 0) continue;
+
+        let bestForThisVendor: BestOfferResult | null = null;
 
         for (const o of rawOffers) {
           if (!o || (o.value ?? 0) <= 0 || (o.min_order ?? 0) < 0) continue;
           const effectiveAmount = getEffectiveAmount(o);
-          candidates.push({
-            vendorId: v.id,
-            vendorName: v.business_name ?? 'Partner',
-            vendorLogoUrl: v.logo_url ?? null,
-            offer: o,
-            effectiveAmount,
-          });
+
+          if (!bestForThisVendor || effectiveAmount > bestForThisVendor.effectiveAmount) {
+            bestForThisVendor = {
+              vendorId: v.id,
+              vendorName: v.business_name ?? 'Partner',
+              vendorLogoUrl: v.logo_url ?? null,
+              offer: o,
+              effectiveAmount,
+            };
+          }
         }
+
+        // Enforce one banner per vendor: only push the single best offer.
+        if (bestForThisVendor) bestOfferPerVendor.push(bestForThisVendor);
       }
 
-      if (candidates.length === 0) return null;
+      if (bestOfferPerVendor.length === 0) {
+        return { bestOffer: null, landingOffers: [] };
+      }
 
-      candidates.sort((a, b) => b.effectiveAmount - a.effectiveAmount);
-      return candidates[0];
+      bestOfferPerVendor.sort((a, b) => b.effectiveAmount - a.effectiveAmount);
+
+      // Keep enough items to allow the landing carousel to rotate smoothly.
+      // NOTE: If you want unlimited rotation, remove this slice and return all vendors.
+      const landingOffers = bestOfferPerVendor.slice(0, 10);
+      return {
+        bestOffer: landingOffers[0] ?? null,
+        landingOffers,
+      };
     },
     staleTime: 60 * 1000, // 1 min
   });
 
-  return { bestOffer: bestOffer ?? null, isLoading, error: error ?? null };
+  return {
+    bestOffer: data?.bestOffer ?? null,
+    landingOffers: data?.landingOffers ?? [],
+    isLoading,
+    error: error ?? null,
+  };
 }

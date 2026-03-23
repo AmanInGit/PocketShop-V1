@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { useVendor } from '@/features/vendor/hooks/useVendor';
@@ -187,6 +187,7 @@ type StaffMember = {
 };
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { data: vendor, isLoading: vendorLoading } = useVendor();
   const { toast } = useToast();
@@ -268,11 +269,14 @@ export default function Settings() {
   const [isUploadingRestaurant, setIsUploadingRestaurant] = useState(false);
   const [isUploadingFood, setIsUploadingFood] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [appearOnDashboard, setAppearOnDashboard] = useState(false);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const [confirmSaveTitle, setConfirmSaveTitle] = useState('Save changes?');
   const [confirmSaveDescription, setConfirmSaveDescription] = useState('Do you want to save these changes?');
   const [pendingSaveAction, setPendingSaveAction] = useState<(() => void) | null>(null);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const [pendingDiscardAction, setPendingDiscardAction] = useState<(() => void) | null>(null);
 
   const [baseline, setBaseline] = useState<{
     businessForm: BusinessFormState;
@@ -288,6 +292,7 @@ export default function Settings() {
     restaurantImages: string[];
     foodImages: string[];
     offers: Offer[];
+    appearOnDashboard: boolean;
     staffMembers: StaffMember[];
   } | null>(null);
 
@@ -360,7 +365,7 @@ export default function Settings() {
       const nextRestaurantImages = ((meta?.restaurant_images as string[]) ?? []).slice();
       const nextFoodImages = ((meta?.food_images as string[]) ?? []).slice();
       const rawOffers = (meta?.offers as Offer[]) ?? [];
-      const nextOffers = Array.isArray(rawOffers)
+      const nextOffers: Offer[] = Array.isArray(rawOffers)
         ? rawOffers
             .filter((o) => o && typeof o === 'object' && ('type' in o || 'value' in o))
             .map((o) => ({
@@ -373,16 +378,18 @@ export default function Settings() {
             }))
         : [];
       const rawStaffMembers = (meta?.staff_accounts as StaffMember[]) ?? [];
-      const nextStaffMembers = Array.isArray(rawStaffMembers)
+      const nextStaffMembers: StaffMember[] = Array.isArray(rawStaffMembers)
         ? rawStaffMembers
             .filter((s) => s && typeof s === 'object')
             .map((s) => ({
               id: (s as StaffMember).id ?? crypto.randomUUID(),
               name: String((s as StaffMember).name ?? '').trim(),
               phone: String((s as StaffMember).phone ?? '').trim(),
-              role: (s as StaffMember).role === 'manager' ? 'manager' : 'staff',
+              role: ((s as StaffMember).role === 'manager' ? 'manager' : 'staff') as StaffMember['role'],
             }))
         : [];
+
+      const nextAppearOnDashboard = !!meta?.appear_on_dashboard;
 
       setBusinessForm(nextBusinessForm);
       setProfileForm(nextProfileForm);
@@ -399,6 +406,7 @@ export default function Settings() {
       setRestaurantImages(nextRestaurantImages);
       setFoodImages(nextFoodImages);
       setOffers(nextOffers);
+      setAppearOnDashboard(nextAppearOnDashboard);
       setStaffMembers(nextStaffMembers);
 
       setBaseline({
@@ -415,6 +423,7 @@ export default function Settings() {
         restaurantImages: nextRestaurantImages,
         foodImages: nextFoodImages,
         offers: nextOffers,
+        appearOnDashboard: nextAppearOnDashboard,
         staffMembers: nextStaffMembers,
       });
     }
@@ -461,7 +470,8 @@ export default function Settings() {
     !sameString(businessForm.city, baseline.businessForm.city) ||
     !sameString(businessForm.state, baseline.businessForm.state) ||
     !sameString(businessForm.postal_code, baseline.businessForm.postal_code) ||
-    !sameString(businessForm.country, baseline.businessForm.country)
+    !sameString(businessForm.country, baseline.businessForm.country) ||
+    appearOnDashboard !== baseline.appearOnDashboard
   );
 
   const profileDirty = !!baseline && (
@@ -546,6 +556,69 @@ export default function Settings() {
     a.status === b.status;
 
   const fssaiDirty = !!baseline && !sameFssai(fssaiForm, baseline.fssaiForm);
+  const hasUnsavedChanges =
+    businessDirty ||
+    profileDirty ||
+    operationsDirty ||
+    notificationsDirty ||
+    paymentDirty ||
+    kycTaxDirty ||
+    paymentModesDirty ||
+    kotSettingsDirty ||
+    offersDirty ||
+    staffDirty ||
+    fssaiDirty;
+
+  const requestDiscardConfirmation = (action: () => void) => {
+    setPendingDiscardAction(() => action);
+    setConfirmDiscardOpen(true);
+  };
+
+  const handleSectionChange = (nextTab: string) => {
+    if (nextTab === activeTab) return;
+    if (hasUnsavedChanges) {
+      requestDiscardConfirmation(() => setActiveTab(nextTab));
+      return;
+    }
+    setActiveTab(nextTab);
+  };
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const handleDocumentNavigation = (event: MouseEvent) => {
+      if (!hasUnsavedChanges || updateMutation.isPending) return;
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+
+      const hrefAttr = anchor.getAttribute('href');
+      if (!hrefAttr || hrefAttr.startsWith('#') || hrefAttr.startsWith('mailto:') || hrefAttr.startsWith('tel:')) return;
+
+      const nextUrl = new URL(anchor.href, window.location.origin);
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+      if (nextUrl.origin !== window.location.origin || nextPath === currentPath) return;
+
+      event.preventDefault();
+      requestDiscardConfirmation(() => navigate(nextPath));
+    };
+
+    document.addEventListener('click', handleDocumentNavigation, true);
+    return () => document.removeEventListener('click', handleDocumentNavigation, true);
+  }, [hasUnsavedChanges, navigate, updateMutation.isPending]);
 
   const uploadVendorImage = async (file: File, folder: 'restaurant' | 'food') => {
     if (!vendor?.id) throw new Error('No vendor ID');
@@ -662,6 +735,7 @@ export default function Settings() {
   };
 
   const saveBusiness = () => {
+    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
     updateMutation.mutate({
       business_name: businessForm.business_name,
       business_type: businessForm.business_type || null,
@@ -671,8 +745,16 @@ export default function Settings() {
       state: businessForm.state || null,
       postal_code: businessForm.postal_code || null,
       country: businessForm.country,
+      metadata: {
+        ...meta,
+        appear_on_dashboard: appearOnDashboard,
+      },
     });
-    setBaseline((prev) => (prev ? { ...prev, businessForm: { ...businessForm } } : prev));
+    setBaseline((prev) =>
+      prev
+        ? { ...prev, businessForm: { ...businessForm }, appearOnDashboard }
+        : prev
+    );
   };
 
   const saveProfile = () => {
@@ -831,12 +913,12 @@ export default function Settings() {
   };
 
   const saveStaffMembers = () => {
-    const sanitized = staffMembers
+    const sanitized: StaffMember[] = staffMembers
       .map((s) => ({
         id: s.id,
         name: (s.name || '').trim(),
         phone: (s.phone || '').trim(),
-        role: s.role === 'manager' ? 'manager' : 'staff',
+        role: (s.role === 'manager' ? 'manager' : 'staff') as StaffMember['role'],
       }))
       .filter((s) => s.name && s.phone);
 
@@ -943,7 +1025,7 @@ export default function Settings() {
               return (
                 <DropdownMenuItem
                   key={s.value}
-                  onClick={() => setActiveTab(s.value)}
+                  onClick={() => handleSectionChange(s.value)}
                   className={`flex items-center gap-2 ${isActive ? 'bg-primary/15 text-primary font-semibold' : ''}`}
                 >
                   <s.icon className="h-4 w-4" />
@@ -955,7 +1037,7 @@ export default function Settings() {
         </DropdownMenu>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleSectionChange} className="w-full">
         <div>
         <TabsContent value="business" className="mt-0">
           <Card>
@@ -1002,6 +1084,21 @@ export default function Settings() {
                   rows={3}
                   className="text-foreground"
                 />
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-foreground">Appear on Dashboard</p>
+                    <p className={textHint}>Allow your best offer to be considered for the customer dashboard section.</p>
+                  </div>
+                  <Switch
+                    checked={appearOnDashboard}
+                    onCheckedChange={(checked) => {
+                      // TODO: Trigger vendor dashboard appearance approval request workflow when backend API is ready.
+                      setAppearOnDashboard(checked);
+                    }}
+                  />
+                </div>
               </div>
               <Separator />
               <div className="space-y-2">
@@ -2063,6 +2160,22 @@ export default function Settings() {
         description={confirmSaveDescription}
         confirmLabel="Yes, save"
         isConfirming={updateMutation.isPending}
+      />
+      <ConfirmActionDialog
+        open={confirmDiscardOpen}
+        onOpenChange={(open) => {
+          setConfirmDiscardOpen(open);
+          if (!open) setPendingDiscardAction(null);
+        }}
+        onConfirm={() => {
+          pendingDiscardAction?.();
+          setConfirmDiscardOpen(false);
+          setPendingDiscardAction(null);
+        }}
+        title="Discard unsaved changes?"
+        description="You have unsaved changes. Save first, or discard these edits to continue."
+        confirmLabel="Discard and continue"
+        isConfirming={false}
       />
     </div>
   );
