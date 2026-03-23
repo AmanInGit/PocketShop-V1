@@ -16,6 +16,12 @@ import {
   Store,
   ChefHat,
   Tv2,
+  Building2,
+  User,
+  Tag,
+  Clock,
+  Bell,
+  LayoutGrid,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -66,6 +72,91 @@ const businessItems: NavItem[] = [
 
 const settingsItems: NavItem[] = [
   { id: 'settings', label: 'Settings', description: 'Preferences & config', icon: <Settings className="w-5 h-5" />, path: ROUTES.VENDOR_DASHBOARD_SETTINGS },
+];
+
+const settingsSearchItems: NavItem[] = [
+  // Settings tabs
+  { id: 'settings-business', label: 'Business settings', description: 'Business info & details', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-profile', label: 'Profile settings', description: 'Owner profile, contact, branding', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+  { id: 'settings-staff', label: 'Staff settings', description: 'Staff members & roles', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=staff` },
+  { id: 'settings-layout', label: 'Layout settings', description: 'Tables, layout & storefront structure', icon: <LayoutGrid className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=layout` },
+  { id: 'settings-offers', label: 'Offers settings', description: 'Promotions, discounts & offers', icon: <Tag className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=offers` },
+  { id: 'settings-operations', label: 'Operations settings', description: 'Hours, operational controls & workflows', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=operations` },
+  { id: 'settings-notifications', label: 'Notifications settings', description: 'Email/order alerts & preferences', icon: <Bell className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=notifications` },
+  { id: 'settings-payment', label: 'Payment settings', description: 'Payouts, payment modes & tax/KYC', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+
+  // Business tab fields (so queries like “address”, “city”, “state” work)
+  { id: 'settings-business-name', label: 'Business name', description: 'Your business display name', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-business-type', label: 'Business type', description: 'Type of business (restaurant, cafe, etc.)', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-business-description', label: 'Business description', description: 'Short description shown to customers', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-address', label: 'Address', description: 'Street address / location', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-city', label: 'City', description: 'Business city', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-state', label: 'State', description: 'Business state', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-postal-code', label: 'Postal code', description: 'ZIP / postal code', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+  { id: 'settings-country', label: 'Country', description: 'Country / region', icon: <Building2 className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=business` },
+
+  // Profile tab fields
+  { id: 'settings-owner-name', label: 'Owner name', description: 'Profile owner name', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+  { id: 'settings-profile-email', label: 'Email', description: 'Owner contact email', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+  { id: 'settings-mobile-number', label: 'Mobile number', description: 'Owner mobile phone', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+  { id: 'settings-logo-url', label: 'Logo URL', description: 'Upload/provide your logo URL', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+  { id: 'settings-banner-url', label: 'Banner URL', description: 'Upload/provide banner URL', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+  { id: 'settings-banner-color', label: 'Banner color', description: 'Brand/banner color', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=profile` },
+
+  // Staff tab fields (common search terms)
+  { id: 'settings-staff-members', label: 'Staff', description: 'Manage staff members', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=staff` },
+  { id: 'settings-staff-name', label: 'Staff name', description: 'Add/edit staff member name', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=staff` },
+  { id: 'settings-staff-phone', label: 'Staff phone', description: 'Staff member phone number', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=staff` },
+  { id: 'settings-staff-role', label: 'Staff role', description: 'Manager / staff role', icon: <User className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=staff` },
+
+  // Offers tab fields
+  { id: 'settings-offers-promo-code', label: 'Promo code', description: 'Offer/promotion code', icon: <Tag className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=offers` },
+  { id: 'settings-offer-type', label: 'Offer type', description: 'Percentage or flat discounts', icon: <Tag className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=offers` },
+  { id: 'settings-discount-value', label: 'Discount value', description: 'The discount amount/percent', icon: <Tag className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=offers` },
+  { id: 'settings-min-order', label: 'Minimum order', description: 'Minimum order required for offer', icon: <Tag className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=offers` },
+  { id: 'settings-max-discount', label: 'Max discount', description: 'Maximum discount value', icon: <Tag className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=offers` },
+
+  // Operations tab fields
+  { id: 'settings-working-days', label: 'Working days', description: 'Which days you are open', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=operations` },
+  { id: 'settings-opening-time', label: 'Opening time', description: 'Store opening time', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=operations` },
+  { id: 'settings-closing-time', label: 'Closing time', description: 'Store closing time', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=operations` },
+  { id: 'settings-operational-hours', label: 'Operational hours', description: 'Opening/closing schedule', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=operations` },
+
+  // Notifications tab fields
+  { id: 'settings-notification-email', label: 'Email notifications', description: 'Email alerts', icon: <Bell className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=notifications` },
+  { id: 'settings-notification-orders', label: 'Order notifications', description: 'Get alerts for new orders', icon: <Bell className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=notifications` },
+  { id: 'settings-notification-low-stock', label: 'Low stock alerts', description: 'Alerts when inventory is low', icon: <Bell className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=notifications` },
+  { id: 'settings-notification-payouts', label: 'Payout notifications', description: 'Alerts for payouts', icon: <Bell className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=notifications` },
+
+  // Layout tab fields (generic but useful search tokens)
+  { id: 'settings-layout-tables', label: 'Tables', description: 'Configure tables for your layout', icon: <LayoutGrid className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=layout` },
+  { id: 'settings-layout-zones', label: 'Zones', description: 'Define table zones/areas', icon: <LayoutGrid className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=layout` },
+  { id: 'settings-layout-display-order', label: 'Display order', description: 'Ordering of zones/tables', icon: <LayoutGrid className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=layout` },
+
+  // Payment tab subsections (common “search missing” items)
+  { id: 'settings-bank-account', label: 'Bank account info', description: 'Bank account details + IFSC for payouts', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-bank-account-number', label: 'Bank account number', description: 'Enter your bank account number', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-ifsc', label: 'IFSC code', description: 'Enter/search IFSC code for your bank', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-kyc-tax', label: 'KYC & tax info', description: 'Legal compliance, PAN, GSTIN and related fields', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-pan', label: 'PAN number', description: 'Enter your PAN number', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-gst', label: 'GSTIN / GST settings', description: 'GST registered, GSTIN and related fields', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-business-entity-type', label: 'Business entity type', description: 'Sole proprietorship / partnership / LLP / etc.', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-cancelled-cheque', label: 'Cancelled cheque URL', description: 'Optional compliance upload integration placeholder', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+
+  { id: 'settings-payment-modes', label: 'Payment collection modes', description: 'Cash/QR/waiter modes in dine-in flow', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-accept-cash', label: 'Accept cash at counter', description: 'Enable cash payments at billing counter', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-online-qr', label: 'Accept online via QR/App', description: 'Enable QR/App payments', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-pay-at-table', label: 'Pay at table via waiter', description: 'Enable waiter-assisted payments', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-bill-request', label: 'Allow bill request', description: 'Allow bill requests from table', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-call-waiter', label: 'Allow call waiter', description: 'Allow staff call from table', icon: <CreditCard className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+
+  { id: 'settings-kot', label: 'KOT settings', description: 'Auto-print KOT + printer target', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-auto-print-kot', label: 'Auto-print KOT', description: 'Kitchen ticket auto print preference', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-printer-target', label: 'Printer target', description: 'Thermal printer target name/IP/Bluetooth id', icon: <Clock className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+
+  { id: 'settings-fssai', label: 'FSSAI details', description: 'Food business compliance details (license number, expiry, status)', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-fssai-license', label: 'FSSAI license number', description: 'FSSAI license number', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
+  { id: 'settings-fssai-expiry', label: 'FSSAI expiry date', description: 'FSSAI expiry date', icon: <Settings className="w-5 h-5" />, path: `${ROUTES.VENDOR_DASHBOARD_SETTINGS}?tab=payment` },
 ];
 
 const SIDEBAR_WIDTH_EXPANDED = 256; // w-64
@@ -134,6 +225,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({ children }) => {
         isMenuOpen={isSidebarOpen}
         isSidebarCollapsed={isSidebarCollapsed}
         sidebarWidth={isSidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED}
+        searchItems={[...coreItems, ...businessItems, ...settingsItems, ...settingsSearchItems]}
+        onSearchSelect={(item) => handleNavigation(item.path, item.openInNewTab)}
       />
 
       <div className="pt-16">

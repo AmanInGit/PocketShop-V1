@@ -6,7 +6,7 @@
  * Handles operational hours: modal for going online outside hours, extended session timer.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, LogOut, ChevronDown, User, Menu } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -20,12 +20,25 @@ import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { GoOnlineOutsideHoursModal } from '@/components/vendor/GoOnlineOutsideHoursModal';
 import { ExtendedSessionTimer } from '@/components/vendor/ExtendedSessionTimer';
 import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
+import comradeAiLogo from '@/assets/images/Comrade_AI.png';
 
 interface TopNavbarProps {
   onMenuToggle?: () => void;
   isMenuOpen?: boolean;
   isSidebarCollapsed?: boolean;
   sidebarWidth?: number;
+  /**
+   * Universal search options (typically the sidebar navigation items).
+   * When provided, the search input will filter and navigate to matching routes.
+   */
+  searchItems?: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    path: string;
+    openInNewTab?: boolean;
+  }>;
+  onSearchSelect?: (item: { path: string; openInNewTab?: boolean }) => void;
 }
 
 const TopNavbar: React.FC<TopNavbarProps> = ({
@@ -33,13 +46,19 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
   isMenuOpen: _isMenuOpen,
   isSidebarCollapsed = false,
   sidebarWidth = 256,
+  searchItems,
+  onSearchSelect,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeResultIndex, setActiveResultIndex] = useState(0);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showGoOfflineConfirm, setShowGoOfflineConfirm] = useState(false);
   const [offlineReason, setOfflineReason] = useState('');
+  const [showComradeAi, setShowComradeAi] = useState(false);
   const [showGoOnlineModal, setShowGoOnlineModal] = useState(false);
   const [showGoOnlineConfirm, setShowGoOnlineConfirm] = useState(false);
   const { user, signOut } = useAuth();
@@ -56,6 +75,34 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
   } = useVendorStatusContext();
   const { canGoOnline, percentage } = useProfileCompletion();
   const { openProfileCompletionModal } = useProfileCompletionModal();
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredSearchItems = useMemo(() => {
+    if (!searchItems?.length) return [];
+    if (!normalizedQuery) return [];
+    return searchItems
+      .filter((item) => {
+        const haystack = `${item.label} ${item.description ?? ''}`.toLowerCase();
+        return haystack.includes(normalizedQuery);
+      })
+      .slice(0, 60);
+  }, [normalizedQuery, searchItems]);
+
+  useEffect(() => {
+    setActiveResultIndex(0);
+    setSearchOpen(!!normalizedQuery && filteredSearchItems.length > 0);
+  }, [normalizedQuery, filteredSearchItems.length]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!searchWrapRef.current) return;
+      if (!searchWrapRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
 
   /** When profile incomplete and trying to go online, show modal instead. Allow going offline anytime. */
   const statusToggleDisabled = isToggling;
@@ -121,15 +168,75 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                 <Menu className="w-5 h-5 text-muted-foreground" />
               </button>
             )}
-            <div className="relative w-60 sm:w-80 md:max-w-lg min-w-[200px] flex-shrink-0">
+            <div
+              ref={searchWrapRef}
+              className="relative w-60 sm:w-80 md:max-w-lg min-w-[200px] flex-shrink-0"
+            >
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
               <input
                 type="text"
                 placeholder="Universal Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => {
+                  if (normalizedQuery && filteredSearchItems.length > 0) setSearchOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (!searchOpen) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setActiveResultIndex((i) => Math.min(i + 1, filteredSearchItems.length - 1));
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setActiveResultIndex((i) => Math.max(i - 1, 0));
+                  }
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const picked = filteredSearchItems[activeResultIndex];
+                    if (picked) {
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                      onSearchSelect?.(picked);
+                    }
+                  }
+                }}
                 className="w-full h-9 pl-10 pr-4 rounded-md bg-muted border border-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
               />
+
+              {searchOpen && (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] bg-popover rounded-lg shadow-lg border border-border z-50 overflow-hidden">
+                  {filteredSearchItems.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">No results</div>
+                  ) : (
+                    <div className="max-h-80 overflow-auto">
+                      {filteredSearchItems.map((item, idx) => {
+                        const active = idx === activeResultIndex;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onMouseEnter={() => setActiveResultIndex(idx)}
+                            onClick={() => {
+                              setSearchOpen(false);
+                              setSearchQuery('');
+                              onSearchSelect?.(item);
+                            }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                              active ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                            }`}
+                          >
+                            <div className="font-medium">{item.label}</div>
+                            {item.description ? (
+                              <div className="text-xs text-muted-foreground truncate">{item.description}</div>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -154,6 +261,24 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                   title={statusToggleTitle}
                 />
               </span>
+              <button
+                type="button"
+                onClick={() => setShowComradeAi(true)}
+                className="h-9 w-9 inline-flex items-center justify-center rounded-md
+                  bg-indigo-50/70 border border-indigo-100
+                  hover:bg-indigo-50 transition-colors
+                  dark:bg-indigo-950/40 dark:border-indigo-900
+                  focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="Comrade AI (Coming soon)"
+                title="Comrade AI (Coming soon)"
+              >
+                <img
+                  src={comradeAiLogo}
+                  alt="Comrade AI"
+                  className="w-6 h-6 object-contain"
+                  draggable={false}
+                />
+              </button>
               <ThemeToggle />
               <NotificationBell />
             </div>
@@ -278,6 +403,25 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
         description="Are you sure you want to log out of your account?"
         confirmLabel="Logout"
         isConfirming={isLoggingOut}
+      />
+      <ConfirmActionDialog
+        open={showComradeAi}
+        onOpenChange={setShowComradeAi}
+        onConfirm={() => setShowComradeAi(false)}
+        title="Comrade AI"
+        description="Comrade AI will help you run your store smarter using your store data (orders, busy hours, and your schedule). This is a UI preview—real recommendations are coming soon."
+        confirmLabel="Got it"
+        cancelLabel="Close"
+        extraContent={
+          <div className="mt-2">
+            <div className="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700">
+              Coming soon
+            </div>
+            <div className="text-sm text-muted-foreground mt-3">
+              Next: you will see AI suggestions for what to do next (timing, actions, and smarter planning) based on your store activity.
+            </div>
+          </div>
+        }
       />
     </header>
   );
