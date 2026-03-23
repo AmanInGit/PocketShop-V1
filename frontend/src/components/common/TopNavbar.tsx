@@ -36,6 +36,10 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showGoOfflineConfirm, setShowGoOfflineConfirm] = useState(false);
+  const [offlineReason, setOfflineReason] = useState('');
   const [showGoOnlineModal, setShowGoOnlineModal] = useState(false);
   const [showGoOnlineConfirm, setShowGoOnlineConfirm] = useState(false);
   const { user, signOut } = useAuth();
@@ -70,22 +74,32 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     }
   };
 
-  const handleStatusToggle = async () => {
+  const handleStatusToggle = () => {
     if (!isOnline) {
       setShowGoOnlineConfirm(true);
       return;
     }
-    await attemptToggleStatus();
+    setShowGoOfflineConfirm(true);
   };
 
   const handleGoOnlineConfirm = async (minutes: number) => {
     await goOnlineWithExtension(minutes);
   };
 
-  const handleLogout = async () => {
-    await signOut();
-    navigate(ROUTES.BUSINESS);
+  const requestLogout = () => {
+    // Close dropdown immediately to avoid backdrop/layering issues.
     setUserMenuOpen(false);
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+      navigate(ROUTES.BUSINESS);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -150,6 +164,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-2 h-9 px-3 rounded-md hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
                 aria-label="User menu"
+                aria-expanded={userMenuOpen}
               >
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                   <User className="w-5 h-5 text-primary" />
@@ -174,7 +189,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                     onClick={() => setUserMenuOpen(false)}
                   />
                   {/* Dropdown Content */}
-                  <div className="absolute right-0 mt-2 w-56 bg-popover rounded-lg shadow-lg border border-border z-50 py-2">
+                  <div className="absolute top-full right-0 mt-2 w-56 bg-popover rounded-lg shadow-lg border border-border z-50 py-1 origin-top-right overflow-hidden">
                     <div className="px-4 py-3 border-b border-border">
                       <div className="text-sm font-medium text-foreground">
                         {user?.full_name || 'Vendor'}
@@ -184,7 +199,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                       </div>
                     </div>
                     <button
-                      onClick={handleLogout}
+                      onClick={requestLogout}
                       className="w-full flex items-center gap-3 px-4 py-2 text-destructive hover:bg-destructive/10 transition-colors text-sm focus:outline-none"
                     >
                       <LogOut className="w-4 h-4" />
@@ -218,6 +233,51 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
         description="Your store will become live to customers and can start receiving orders."
         confirmLabel="Yes, go online"
         isConfirming={isToggling}
+      />
+      <ConfirmActionDialog
+        open={showGoOfflineConfirm}
+        onOpenChange={(open) => {
+          setShowGoOfflineConfirm(open);
+          if (!open) setOfflineReason('');
+        }}
+        onConfirm={async () => {
+          setShowGoOfflineConfirm(false);
+          setOfflineReason('');
+          await attemptToggleStatus();
+        }}
+        title="Go offline?"
+        description="Your store will stop accepting new orders while you are offline."
+        confirmLabel="Go offline"
+        isConfirming={isToggling}
+        extraContent={
+          operationalInfo?.hasOperationalHours && !operationalInfo.isOutsideHours ? (
+            <div className="mt-3">
+              <div className="text-sm font-medium text-foreground mb-2">Why are you going offline?</div>
+              <textarea
+                value={offlineReason}
+                onChange={(e) => setOfflineReason(e.target.value)}
+                placeholder="Optional (e.g., maintenance, taking a break)"
+                className="w-full min-h-[88px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                maxLength={200}
+              />
+              <div className="text-xs text-muted-foreground mt-1">
+                {offlineReason.length}/200
+              </div>
+            </div>
+          ) : undefined
+        }
+      />
+      <ConfirmActionDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={async () => {
+          setShowLogoutConfirm(false);
+          await confirmLogout();
+        }}
+        title="Log out?"
+        description="Are you sure you want to log out of your account?"
+        confirmLabel="Logout"
+        isConfirming={isLoggingOut}
       />
     </header>
   );

@@ -6,12 +6,11 @@
  * Uses onAuthStateChange so we catch the session as soon as Supabase processes the OAuth callback.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
 import { getOnboardingRedirectPath } from '@/features/common/utils/onboardingCheck';
-import { LoadingScreen } from '@/features/common/components/LoadingScreen';
 
 const MAX_WAIT_MS = 15000; // OAuth code exchange can take a few seconds
 const FALLBACK_POLL_MS = 500;
@@ -21,10 +20,44 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string[] | null>(null);
 
+  const AuthCallbackSkeleton = () => {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-white z-50 p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-12 w-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+              <div className="h-5 w-5 rounded-full bg-indigo-500 animate-pulse" />
+            </div>
+            <div className="min-w-0">
+              <div className="h-4 w-40 bg-gray-200 rounded animate-pulse mb-2" />
+              <div className="h-3 w-28 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
+
+          <div className="space-y-3 mb-5">
+            <div className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+            <div className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+            <div className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+          </div>
+
+          <div className="mb-2">
+            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full w-1/3 bg-indigo-600/30 animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 text-center">
+            Signing you in...
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     let mounted = true;
     let timeoutId: ReturnType<typeof setTimeout>;
     let hasRedirected = false;
+    let hasFinalized = false;
 
     const isDev = import.meta.env.DEV;
     if (isDev) {
@@ -46,6 +79,7 @@ export default function AuthCallbackPage() {
     
     // If URL contains error, show it immediately
     if (errorParam) {
+      hasFinalized = true;
       if (isDev) {
         console.error('[OAuth Callback] Error:', errorParam, errorCode, decodeURIComponent(errorDescription));
       }
@@ -80,16 +114,6 @@ export default function AuthCallbackPage() {
     
     if (isDev) {
       console.log('[OAuth Callback] Has access_token:', hasAccessToken, 'Has code:', hasCode, 'Has tokens:', hasTokens);
-    }
-    if (!hasTokens && !errorParam) {
-      if (isDev) {
-        console.error('[OAuth Callback] NO TOKENS IN URL – check Supabase redirect config. Expected #access_token=... or ?code=...');
-      }
-      if (mounted) {
-        setError('No authentication tokens found in URL. Please check Supabase redirect configuration.');
-        setTimeout(() => navigate(ROUTES.LOGIN, { replace: true }), 3000);
-        return;
-      }
     }
 
     const redirectToApp = async (userId: string) => {
@@ -127,7 +151,7 @@ export default function AuthCallbackPage() {
     const processUrlSession = async () => {
       try {
         // First, try getSession - Supabase should process URL automatically
-        let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (isDev) {
           console.log('[OAuth Callback] Initial getSession:', { hasSession: !!session?.user, userId: session?.user?.id, error: sessionError });
         }
@@ -141,8 +165,6 @@ export default function AuthCallbackPage() {
         if (hasHash && !session && !errorParam) {
           if (isDev) console.log('[OAuth Callback] Attempting to parse hash tokens manually...');
           const accessToken = hashParams.get('access_token');
-          const refreshToken = hashParams.get('refresh_token');
-          const expiresIn = hashParams.get('expires_in');
           
           if (accessToken) {
             if (isDev) console.log('[OAuth Callback] Found access_token in hash, setting session...');
@@ -211,7 +233,8 @@ export default function AuthCallbackPage() {
 
     // 4. Timeout if session never arrives
     const failTimeoutId = setTimeout(() => {
-      if (mounted && !error && !hasRedirected) {
+      if (mounted && !hasFinalized && !hasRedirected) {
+        hasFinalized = true;
         if (isDev) console.error('[OAuth Callback] Timeout - no session after', MAX_WAIT_MS, 'ms');
         setError('Sign-in timed out. Please try again.');
         setTimeout(() => navigate(ROUTES.LOGIN, { replace: true }), 2000);
@@ -254,5 +277,5 @@ export default function AuthCallbackPage() {
     );
   }
 
-  return <LoadingScreen message="Signing you in..." />;
+  return <AuthCallbackSkeleton />;
 }

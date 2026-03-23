@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +16,7 @@ interface ConfirmActionDialogProps {
   onConfirm: () => void | Promise<void>;
   title: string;
   description: string;
+  extraContent?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   isConfirming?: boolean;
@@ -26,6 +28,7 @@ export function ConfirmActionDialog({
   onConfirm,
   title,
   description,
+  extraContent,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   isConfirming = false,
@@ -37,6 +40,7 @@ export function ConfirmActionDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {extraContent}
         <AlertDialogFooter className="!flex-row items-center justify-end gap-3">
           <AlertDialogCancel className="mt-0 h-11 min-w-[120px]" disabled={isConfirming}>
             {cancelLabel}
