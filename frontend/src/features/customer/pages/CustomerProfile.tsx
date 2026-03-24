@@ -9,6 +9,8 @@ import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
 import Logo from '@/features/common/components/Logo';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   User,
   Mail,
@@ -18,25 +20,40 @@ import {
   Clock,
   Package,
   Loader2,
+  ShieldCheck,
 } from 'lucide-react';
+const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 
 interface OrderSummary {
   id: string;
   total_amount: number;
   status: string;
   created_at: string;
+  table_code?: string | null;
+  payment_method?: string | null;
+  items?: Array<{ name?: string; quantity?: number }>;
   vendor?: { business_name: string };
 }
 
 export default function CustomerProfile() {
   const navigate = useNavigate();
   const { user, signOut, loading: authLoading } = useAuth();
+  const [customerViewAuth, setCustomerViewAuth] = useState<boolean>(() => localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1');
   const [profile, setProfile] = useState<{ name: string; email: string | null; mobile_number: string } | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestOtp, setGuestOtp] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [guestPhoneVerified, setGuestPhoneVerified] = useState(false);
+  const [guestOrders, setGuestOrders] = useState<OrderSummary[]>([]);
+  const [guestOrdersLoading, setGuestOrdersLoading] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [otpCooldown, setOtpCooldown] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !customerViewAuth) return;
     const loadProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
@@ -44,46 +61,191 @@ export default function CustomerProfile() {
         .from('customer_profiles')
         .select('name, email, mobile_number')
         .eq('user_id', session.user.id)
-        .single();
+        .maybeSingle();
       if (data) setProfile(data);
-      else setProfile({
-        name: user.full_name || 'Customer',
-        email: user.email || null,
-        mobile_number: '',
-      });
+      else {
+        localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
+        setCustomerViewAuth(false);
+        setProfile(null);
+      }
     };
     loadProfile();
-  }, [user]);
+  }, [user, customerViewAuth]);
 
   useEffect(() => {
-    if (!user) {
+    if (otpCooldown <= 0) return;
+    const id = window.setInterval(() => {
+      setOtpCooldown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [otpCooldown]);
+
+  const fetchOrdersByPhone = async (phone: string) => {
+    setGuestOrdersLoading(true);
+    setGuestError(null);
+    try {
+      const normalized = phone.replace(/\D/g, '').slice(-10);
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,total_amount,status,created_at,vendor_id')
+        .eq('customer_phone', normalized)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+
+      const rows = data || [];
+      if (rows.length === 0) {
+        setGuestOrders([]);
+        return;
+      }
+
+      const vendorIds = [...new Set((rows as any[]).map((o) => o.vendor_id).filter(Boolean))];
+      const { data: vendors } = await supabase
+        .from('vendor_profiles')
+        .select('id, business_name')
+        .in('id', vendorIds);
+      const vMap = new Map((vendors || []).map((v) => [v.id, v]));
+
+      setGuestOrders(
+        (rows as any[]).map((o) => ({
+          ...o,
+          vendor: vMap.get(o.vendor_id),
+        }))
+      );
+    } catch (error: any) {
+      console.error('Failed to fetch guest orders:', error);
+      setGuestError(error?.message || 'Failed to load order history');
+    } finally {
+      setGuestOrdersLoading(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setGuestError(null);
+    const normalized = guestPhone.replace(/\D/g, '').slice(-10);
+    if (normalized.length !== 10) {
+      setGuestError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (otpCooldown > 0) {
+      setGuestError(`Please wait ${otpCooldown}s before requesting a new OTP.`);
+      return;
+    }
+    setIsSendingOtp(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: `+91${normalized}`,
+        options: { channel: 'sms' },
+      });
+      if (error) throw error;
+      setOtpCooldown(30);
+      setGuestError('OTP sent. Please enter it below.');
+    } catch (error: any) {
+      console.error('Failed to send OTP:', error);
+      setGuestError(error?.message || 'Failed to send OTP');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setGuestError(null);
+    const normalized = guestPhone.replace(/\D/g, '').slice(-10);
+    if (normalized.length !== 10) {
+      setGuestError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!guestOtp || guestOtp.length < 4) {
+      setGuestError('Enter the OTP sent to your phone.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        phone: `+91${normalized}`,
+        token: guestOtp.trim(),
+        type: 'sms',
+      });
+      if (error) throw error;
+      setGuestPhoneVerified(true);
+      await fetchOrdersByPhone(normalized);
+    } catch (error: any) {
+      console.error('Failed to verify OTP:', error);
+      setGuestError(error?.message || 'OTP verification failed');
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user || !customerViewAuth) {
       setOrdersLoading(false);
       return;
     }
     const loadOrders = async () => {
       const { data: cp } = await supabase
         .from('customer_profiles')
-        .select('id')
+        .select('id, mobile_number')
         .eq('user_id', user.id)
-        .single();
-      if (!cp?.id) {
+        .maybeSingle();
+      if (!cp?.id && !cp?.mobile_number) {
         setOrdersLoading(false);
         return;
       }
-      const { data } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          total_amount,
-          status,
-          created_at,
-          vendor_id
-        `)
-        .eq('customer_id', cp.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      if (data) {
-        const vendorIds = [...new Set((data as any[]).map((o) => o.vendor_id))];
+
+      let rows: any[] = [];
+      if (cp?.id) {
+        const { data: byCustomerId } = await supabase
+          .from('orders')
+          .select(`
+            id,
+            total_amount,
+            status,
+            created_at,
+            vendor_id,
+            table_code,
+            payment_method,
+            items
+          `)
+          .eq('customer_id', cp.id)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        rows = [...rows, ...(byCustomerId || [])];
+      }
+
+      if (cp?.mobile_number) {
+        const normalized = cp.mobile_number.replace(/\D/g, '').slice(-10);
+        const { data: byPhone } = await supabase
+          .from('orders')
+          .select(`
+            id,
+            total_amount,
+            status,
+            created_at,
+            vendor_id,
+            table_code,
+            payment_method,
+            items
+          `)
+          .eq('customer_phone', normalized)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        rows = [...rows, ...(byPhone || [])];
+      }
+
+      const dedup = new Map<string, any>();
+      rows.forEach((r) => {
+        if (!dedup.has(r.id)) dedup.set(r.id, r);
+      });
+
+      const data = Array.from(dedup.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      if (data.length > 0) {
+        const vendorIds = [...new Set((data as any[]).map((o) => o.vendor_id).filter(Boolean))];
         const { data: vendors } = await supabase
           .from('vendor_profiles')
           .select('id, business_name')
@@ -95,14 +257,17 @@ export default function CustomerProfile() {
             vendor: vMap.get(o.vendor_id),
           }))
         );
+      } else {
+        setOrders([]);
       }
       setOrdersLoading(false);
     };
     loadOrders();
-  }, [user]);
+  }, [user, customerViewAuth]);
 
   const handleSignOut = async () => {
-    await signOut();
+    localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
+    setCustomerViewAuth(false);
     navigate(ROUTES.HOME);
   };
 
@@ -129,21 +294,105 @@ export default function CustomerProfile() {
       </header>
 
       <main className="flex-1 px-4 py-6">
-        {!user ? (
-          <div className="text-center py-12 px-4">
-            <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-slate-700 flex items-center justify-center mx-auto mb-4">
-              <User className="w-10 h-10 text-gray-400 dark:text-slate-500" />
+        {!user || !customerViewAuth ? (
+          <div className="space-y-6">
+            <div className="text-center py-6 px-4">
+              <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-slate-700 flex items-center justify-center mx-auto mb-4">
+                <User className="w-10 h-10 text-gray-400 dark:text-slate-500" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100 mb-2">Sign in to continue</h2>
+              <p className="text-gray-600 dark:text-slate-400 mb-6 max-w-sm mx-auto">
+                Create an account or sign in to track orders and manage your profile.
+              </p>
+              <Link
+                to={ROUTES.CUSTOMER_AUTH}
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 active:scale-[0.98] touch-target"
+              >
+                Sign in / Sign up
+              </Link>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100 mb-2">Sign in to continue</h2>
-            <p className="text-gray-600 dark:text-slate-400 mb-6 max-w-sm mx-auto">
-              Create an account or sign in to track orders and manage your profile.
-            </p>
-            <Link
-              to={ROUTES.CUSTOMER_AUTH}
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 active:scale-[0.98] touch-target"
-            >
-              Sign in / Sign up
-            </Link>
+
+            <section className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" />
+                View orders by mobile number
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+                Verify with OTP to view your past guest orders.
+              </p>
+
+              <div className="space-y-3">
+                <Input
+                  type="tel"
+                  placeholder="10-digit mobile number"
+                  value={guestPhone}
+                  onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  maxLength={10}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSendOtp}
+                    disabled={isSendingOtp || otpCooldown > 0}
+                    className="flex-1"
+                  >
+                    {isSendingOtp ? 'Sending OTP...' : otpCooldown > 0 ? `Resend in ${otpCooldown}s` : 'Send OTP'}
+                  </Button>
+                  <Input
+                    type="text"
+                    placeholder="OTP"
+                    value={guestOtp}
+                    onChange={(e) => setGuestOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
+                    className="w-28"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    disabled={isVerifyingOtp}
+                  >
+                    {isVerifyingOtp ? 'Verifying...' : 'Verify'}
+                  </Button>
+                </div>
+                {guestError && (
+                  <p className="text-sm text-red-600">{guestError}</p>
+                )}
+              </div>
+
+              {guestPhoneVerified && (
+                <div className="mt-4">
+                  <h4 className="font-medium text-gray-900 dark:text-slate-100 mb-2">Recent orders</h4>
+                  {guestOrdersLoading ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
+                    </div>
+                  ) : guestOrders.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-slate-400">No orders found for this mobile number.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {guestOrders.map((order) => (
+                        <Link
+                          key={order.id}
+                          to={`/order-tracking/${order.id}`}
+                          className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-slate-100">
+                              {order.vendor?.business_name || 'Order'}
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">
+                              ₹{order.total_amount} • {order.status}
+                            </p>
+                          </div>
+                          <ChevronRight className="w-5 h-5 text-gray-400" />
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           </div>
         ) : (
           <>
@@ -195,25 +444,48 @@ export default function CustomerProfile() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {orders.map((order) => (
-                    <Link
-                      key={order.id}
-                      to={`/order-tracking/${order.id}`}
-                      className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 hover:border-orange-200 dark:hover:border-orange-900/50 active:bg-gray-50 dark:active:bg-slate-800 touch-target min-h-[52px]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Clock className="w-5 h-5 text-gray-400" />
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-slate-100">
-                            {order.vendor?.business_name || 'Order'}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-slate-400">
-                            ₹{order.total_amount} • {order.status}
-                          </p>
-                        </div>
+                  {Object.entries(
+                    orders.reduce<Record<string, OrderSummary[]>>((acc, order) => {
+                      const key = new Date(order.created_at).toLocaleDateString();
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(order);
+                      return acc;
+                    }, {})
+                  ).map(([dateKey, groupedOrders]) => (
+                    <div key={dateKey}>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 px-1 pb-1">{dateKey}</p>
+                      <div className="space-y-2">
+                        {groupedOrders.map((order) => (
+                          <Link
+                            key={order.id}
+                            to={`/order-tracking/${order.id}`}
+                            className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 hover:border-orange-200 dark:hover:border-orange-900/50 active:bg-gray-50 dark:active:bg-slate-800 touch-target min-h-[52px]"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Clock className="w-5 h-5 text-gray-400" />
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-slate-100">
+                                  {order.vendor?.business_name || 'Order'}
+                                </p>
+                                <p className="text-sm text-gray-500 dark:text-slate-400">
+                                  ₹{order.total_amount} • {order.status}
+                                  {order.table_code ? ` • Table ${order.table_code}` : ''}
+                                </p>
+                                {Array.isArray(order.items) && order.items.length > 0 && (
+                                  <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-1">
+                                    {order.items
+                                      .slice(0, 2)
+                                      .map((it) => `${it.quantity || 1}x ${it.name || 'Item'}`)
+                                      .join(', ')}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-400" />
+                          </Link>
+                        ))}
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </Link>
+                    </div>
                   ))}
                 </div>
               )}

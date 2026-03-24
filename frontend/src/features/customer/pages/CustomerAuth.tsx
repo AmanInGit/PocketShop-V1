@@ -1,96 +1,144 @@
 /**
- * Customer Auth – mobile-first sign in / sign up.
+ * Customer Auth – mobile OTP flow.
  * Used when customer taps Login on storefront or accesses profile.
- * Supports: Email+Password sign in, Sign up, Continue as Guest.
+ * Supports: Phone OTP verification and Continue as Guest.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, Mail, Lock, User, Phone, Loader2, ChevronLeft } from 'lucide-react';
+import { User, Phone, Loader2, ChevronLeft, ShieldCheck } from 'lucide-react';
 import Logo from '@/features/common/components/Logo';
 
-type Mode = 'login' | 'register';
+const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 
 export default function CustomerAuth() {
   const [searchParams] = useSearchParams();
-  const vendorId = searchParams.get('vendorId');
   const redirect = searchParams.get('redirect') || ROUTES.CUSTOMER_HOME;
   const navigate = useNavigate();
-  const { signIn, signUp, loading, error } = useAuth();
-
-  const [mode, setMode] = useState<Mode>('login');
+  const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  const [localInfo, setLocalInfo] = useState<string | null>(null);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState(0);
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
     name: '',
     phone: '',
+    otp: '',
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-
-    setLocalError(null);
-    if (mode === 'login') {
-      if (!formData.email || !formData.password) {
-        setLocalError('Please enter email and password');
-        return;
-      }
-      const { error: err } = await signIn(formData.email, formData.password);
-      if (!err) {
-        await ensureCustomerProfile();
-        navigate(redirect);
-      }
-    } else {
-      if (!formData.email || !formData.password || !formData.name || !formData.phone) {
-        setLocalError('Please fill all fields');
-        return;
-      }
-      if (formData.password.length < 6) {
-        setLocalError('Password must be at least 6 characters');
-        return;
-      }
-      const { error: err } = await signUp(formData.email, formData.password, {
-        full_name: formData.name,
-        mobile_number: formData.phone,
-        role: 'customer',
-      });
-      if (!err) {
-        await ensureCustomerProfile();
-        navigate(redirect);
-      }
-    }
-  };
+  const normalizedPhone = formData.phone.replace(/\D/g, '').slice(-10);
 
   const ensureCustomerProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
+
     const { data: existing } = await supabase
       .from('customer_profiles')
-      .select('id')
+      .select('id, name, mobile_number')
       .eq('user_id', session.user.id)
-      .single();
-    if (existing) return;
+      .maybeSingle();
+
+    if (existing?.id) {
+      // Keep profile phone aligned with verified OTP phone.
+      if (normalizedPhone && existing.mobile_number !== normalizedPhone) {
+        await supabase
+          .from('customer_profiles')
+          .update({ mobile_number: normalizedPhone })
+          .eq('id', existing.id);
+      }
+      return;
+    }
+
     await supabase.from('customer_profiles').insert({
       user_id: session.user.id,
-      name: session.user.user_metadata?.full_name || formData.name || 'Customer',
-      mobile_number: session.user.user_metadata?.mobile_number || formData.phone || '',
-      email: session.user.email || formData.email,
+      name: formData.name.trim() || 'Customer',
+      mobile_number: normalizedPhone,
+      email: session.user.email || null,
     });
   };
 
+  const handleSendOtp = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
+    if (loading) return;
+    setLocalError(null);
+    setLocalInfo(null);
+    if (otpCooldown > 0) {
+      setLocalError(`Please wait ${otpCooldown}s before requesting new OTP`);
+      return;
+    }
+    if (normalizedPhone.length !== 10) {
+      setLocalError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: `+91${normalizedPhone}`,
+        options: { channel: 'sms' },
+      });
+      if (error) throw error;
+      setOtpSent(true);
+      setOtpCooldown(30);
+      setLocalInfo(`OTP sent to +91 ${normalizedPhone}`);
+    } catch (error: any) {
+      setLocalError(error?.message || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
+    if (loading) return;
+    setLocalError(null);
+    setLocalInfo(null);
+    if (normalizedPhone.length !== 10) {
+      setLocalError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!formData.otp || formData.otp.trim().length < 4) {
+      setLocalError('Please enter the OTP sent to your phone');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        phone: `+91${normalizedPhone}`,
+        token: formData.otp.trim(),
+        type: 'sms',
+      });
+      if (error) throw error;
+      localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '1');
+      await ensureCustomerProfile();
+      navigate(redirect);
+    } catch (error: any) {
+      setLocalError(error?.message || 'OTP verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGuestContinue = () => {
+    localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
     navigate(redirect);
   };
+
+  // cooldown timer
+  useEffect(() => {
+    if (otpCooldown <= 0) return;
+    const id = window.setInterval(() => {
+      setOtpCooldown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [otpCooldown]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
@@ -114,119 +162,96 @@ export default function CustomerAuth() {
       </header>
 
       <main className="flex-1 px-4 py-6 pb-8 max-w-md mx-auto w-full">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1">
-          {mode === 'login' ? 'Welcome back' : 'Create account'}
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1">Verify your mobile</h1>
         <p className="text-gray-600 dark:text-slate-400 text-sm mb-6">
-          {mode === 'login'
-            ? 'Sign in to track orders and save details'
-            : 'Sign up to get started'}
+          Use OTP to sign in and access your order history.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {(error || localError) && (
+        <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="space-y-4">
+          {localError && (
             <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm">
-              {localError || error}
+              {localError}
+            </div>
+          )}
+          {localInfo && (
+            <div className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-sm flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              {localInfo}
             </div>
           )}
 
-          {mode === 'register' && (
-            <>
-              <div>
-                <Label htmlFor="name" className="text-gray-700">Name</Label>
-                <div className="relative mt-1">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="Your name"
-                    value={formData.name}
-                    onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                    className="pl-11 h-12 text-base"
-                    autoComplete="name"
-                    required={mode === 'register'}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="phone" className="text-gray-700">Phone</Label>
-                <div className="relative mt-1">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="10-digit mobile number"
-                    value={formData.phone}
-                    onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                    className="pl-11 h-12 text-base"
-                    autoComplete="tel"
-                    required={mode === 'register'}
-                    maxLength={10}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
           <div>
-            <Label htmlFor="email" className="text-gray-700">Email</Label>
+            <Label htmlFor="name" className="text-gray-700">Name (optional)</Label>
             <div className="relative mt-1">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <Input
-                id="email"
-                type="email"
-                placeholder="your@email.com"
-                value={formData.email}
-                onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                id="name"
+                type="text"
+                placeholder="Your name"
+                value={formData.name}
+                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
                 className="pl-11 h-12 text-base"
-                autoComplete="email"
-                required
+                autoComplete="name"
               />
             </div>
           </div>
 
           <div>
-            <Label htmlFor="password" className="text-gray-700">Password</Label>
+            <Label htmlFor="phone" className="text-gray-700">Mobile Number</Label>
             <div className="relative mt-1">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <Input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder={mode === 'login' ? 'Password' : 'Min 6 characters'}
-                value={formData.password}
-                onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))}
-                className="pl-11 pr-12 h-12 text-base"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                id="phone"
+                type="tel"
+                placeholder="10-digit mobile number"
+                value={formData.phone}
+                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                className="pl-11 h-12 text-base"
+                autoComplete="tel"
                 required
+                maxLength={10}
+                disabled={otpSent}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((p) => !p)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
             </div>
           </div>
+
+          {otpSent && (
+            <div>
+              <Label htmlFor="otp" className="text-gray-700">OTP</Label>
+              <Input
+                id="otp"
+                type="text"
+                placeholder="Enter OTP"
+                value={formData.otp}
+                onChange={(e) => setFormData((p) => ({ ...p, otp: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                className="h-12 text-base"
+                required
+                maxLength={6}
+              />
+            </div>
+          )}
 
           <Button
             type="submit"
             className="w-full h-12 min-h-[48px] text-base font-semibold bg-orange-500 hover:bg-orange-600 active:scale-[0.99] touch-target"
             disabled={loading}
           >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : mode === 'login' ? 'Sign in' : 'Create account'}
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : otpSent ? 'Verify OTP' : 'Send OTP'}
           </Button>
+          {otpSent && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 min-h-[48px] text-base touch-target mt-2"
+              disabled={otpCooldown > 0 || loading}
+              onClick={handleSendOtp}
+            >
+              {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
+            </Button>
+          )}
         </form>
-
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => setMode((m) => (m === 'login' ? 'register' : 'login'))}
-            className="text-orange-600 font-medium text-sm"
-          >
-            {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-          </button>
-        </div>
 
         <div className="mt-8 pt-6 border-t border-gray-200">
           <Button

@@ -10,6 +10,14 @@ import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
 import Logo from '@/features/common/components/Logo';
 import { ArrowLeft, Store, MapPin } from 'lucide-react';
+import { DEFAULT_SERVICE_CITY, SUPPORTED_SERVICE_CITIES } from '@/features/common/constants/serviceCities';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface VendorProfile {
   id: string;
@@ -29,9 +37,17 @@ const CATEGORY_FILTERS: Record<string, string[]> = {
   'fine-dining': ['restaurant', 'italian', 'indian'],
 };
 
+const CITY_QUERY_PARAM = 'city';
+const CITY_STORAGE_KEY = 'shops:selected-city';
+
+const normalizeCity = (value: string | null | undefined) => (value || '').trim().toLowerCase();
+
 export default function ShopsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const category = searchParams.get('category') || 'quick-bites';
+  const cityFromUrl = normalizeCity(searchParams.get(CITY_QUERY_PARAM));
+  const cityFromStorage = normalizeCity(localStorage.getItem(CITY_STORAGE_KEY));
+  const selectedCity = cityFromUrl || cityFromStorage || DEFAULT_SERVICE_CITY;
   const [vendors, setVendors] = useState<VendorProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -40,6 +56,19 @@ export default function ShopsPage() {
   const subtitle = category === 'fine-dining'
     ? 'Discover restaurants near you'
     : 'Quick meals, snacks & more';
+
+  const selectedCityLabel =
+    SUPPORTED_SERVICE_CITIES.find((city) => city.value === selectedCity)?.label || selectedCity;
+
+  const handleCityChange = (nextCity: string) => {
+    const normalizedCity = normalizeCity(nextCity);
+    localStorage.setItem(CITY_STORAGE_KEY, normalizedCity);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set(CITY_QUERY_PARAM, normalizedCity);
+      return next;
+    });
+  };
 
   useEffect(() => {
     async function fetchVendors() {
@@ -58,22 +87,27 @@ export default function ShopsPage() {
         }
 
         const profiles = (data || []) as (VendorProfile & { metadata?: { business_category?: string } })[];
+        const cityFilteredProfiles = profiles.filter(
+          (v) => normalizeCity(v.city) === selectedCity
+        );
         const filters = CATEGORY_FILTERS[category];
         const filtered = filters
-          ? profiles.filter((v) => {
+          ? cityFilteredProfiles.filter((v) => {
               const type = (v.business_type || '').toLowerCase();
               const cat = (v.metadata?.business_category || '').toLowerCase();
               return filters.some((f) => type.includes(f) || cat.includes(f));
             })
-          : profiles;
+          : cityFilteredProfiles;
 
         // If no matches from filter, show all food vendors or all vendors
         const foodTypes = ['restaurant', 'cafe', 'bakery', 'fast-food', 'chinese', 'indian', 'italian', 'desserts'];
-        const foodVendors = profiles.filter((v) => {
+        const foodVendors = cityFilteredProfiles.filter((v) => {
           const t = (v.business_type || '').toLowerCase();
           return foodTypes.some((f) => t.includes(f));
         });
-        const final = filtered.length > 0 ? filtered : (foodVendors.length > 0 ? foodVendors : profiles);
+        const final = filtered.length > 0
+          ? filtered
+          : (foodVendors.length > 0 ? foodVendors : cityFilteredProfiles);
 
         setVendors(final);
       } catch (err) {
@@ -85,7 +119,7 @@ export default function ShopsPage() {
     }
 
     fetchVendors();
-  }, [category]);
+  }, [category, selectedCity]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-8">
@@ -111,7 +145,23 @@ export default function ShopsPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1">{title}</h1>
-        <p className="text-gray-600 dark:text-slate-400 mb-8">{subtitle}</p>
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-gray-600 dark:text-slate-400">{subtitle}</p>
+          <div className="w-full sm:w-[220px]">
+            <Select value={selectedCity} onValueChange={handleCityChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select city" />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_SERVICE_CITIES.map((city) => (
+                  <SelectItem key={city.value} value={city.value}>
+                    {city.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -124,7 +174,7 @@ export default function ShopsPage() {
             <Store className="w-16 h-16 text-gray-300 dark:text-slate-600 mx-auto mb-4" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">No shops yet</h2>
             <p className="text-gray-600 dark:text-slate-400 mb-6 max-w-sm mx-auto">
-              Be the first to add your business. Create your virtual storefront and start receiving orders.
+              No active shops found in {selectedCityLabel}. Try another city or add your shop to start receiving orders.
             </p>
             <Link
               to={ROUTES.BUSINESS}

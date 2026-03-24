@@ -28,6 +28,7 @@ const SEATS_PER_ROW = 5;
 interface VirtualStorefrontTablesProps {
   tables: VendorTable[];
   vendorId: string;
+  tableActivityMap?: Record<string, { activeCount: number; queueCount: number }>;
   onDownloadAll: () => void;
   onDownloadTable: (slug: string, code: string) => void;
   onSaveLayout: (tablesByZone: Record<ZoneKey, VendorTable[]>) => Promise<void>;
@@ -37,11 +38,13 @@ interface VirtualStorefrontTablesProps {
 function TableSeat({
   table,
   vendorId,
+  activity,
   onDownload,
   isEditMode,
 }: {
   table: VendorTable;
   vendorId: string;
+  activity?: { activeCount: number; queueCount: number };
   onDownload: (slug: string, code: string) => void;
   isEditMode: boolean;
 }) {
@@ -58,18 +61,39 @@ function TableSeat({
     setQrDataUrl(dataUrl);
   };
 
+  const activeCount = activity?.activeCount ?? 0;
+  const queueCount = activity?.queueCount ?? 0;
+  const urgencyClass =
+    activeCount >= 3
+      ? 'border-red-500 bg-red-100 text-red-900 animate-pulse dark:border-red-500 dark:bg-red-900/40 dark:text-red-200'
+      : activeCount === 2
+      ? 'border-amber-500 bg-amber-100 text-amber-900 animate-pulse dark:border-amber-500 dark:bg-amber-900/40 dark:text-amber-200'
+      : activeCount === 1
+      ? 'border-green-500 bg-green-100 text-green-900 animate-pulse dark:border-green-500 dark:bg-green-900/40 dark:text-green-200'
+      : '';
+
   const seat = (
     <button
       type="button"
       ref={isEditMode ? setNodeRef : undefined}
       {...(isEditMode ? { ...attributes, ...listeners } : { onClick: loadQR })}
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border-2 text-xs font-bold shadow-sm transition-all duration-200 ${
+      className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border-2 text-xs font-bold shadow-sm transition-all duration-200 ${
         isEditMode
           ? 'cursor-grab border-amber-400 bg-amber-100 text-amber-900 active:cursor-grabbing dark:border-amber-500 dark:bg-amber-900/40 dark:text-amber-200'
-          : 'cursor-pointer border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 text-amber-900 hover:scale-110 hover:border-orange-400 hover:shadow-md hover:shadow-orange-200/50 active:scale-95 dark:border-amber-500/60 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-amber-100 dark:hover:border-orange-400 dark:hover:shadow-orange-500/20'
+          : `cursor-pointer border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 text-amber-900 hover:scale-110 hover:border-orange-400 hover:shadow-md hover:shadow-orange-200/50 active:scale-95 dark:border-amber-500/60 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-amber-100 dark:hover:border-orange-400 dark:hover:shadow-orange-500/20 ${urgencyClass}`
       } ${isDragging ? 'opacity-50' : ''}`}
       title={isEditMode ? `Drag to move — ${table.table_code}` : `Table ${table.table_code} — click to view QR`}
     >
+      {!isEditMode && activeCount > 0 && (
+        <span className="absolute -top-2 -left-2 rounded-full bg-emerald-700 text-white text-[9px] px-1 py-0.5">
+          A{activeCount}
+        </span>
+      )}
+      {!isEditMode && queueCount > 0 && (
+        <span className="absolute -top-2 -right-2 rounded-full bg-slate-900 text-white text-[9px] px-1 py-0.5">
+          Q{queueCount}
+        </span>
+      )}
       {isEditMode && <GripVertical className="mr-0.5 h-3 w-3 text-amber-600" />}
       {table.table_code}
     </button>
@@ -112,6 +136,7 @@ function DroppableZone({
   label,
   tables,
   vendorId,
+  tableActivityMap,
   onDownload,
   isEditMode,
 }: {
@@ -119,6 +144,7 @@ function DroppableZone({
   label: string;
   tables: VendorTable[];
   vendorId: string;
+  tableActivityMap?: Record<string, { activeCount: number; queueCount: number }>;
   onDownload: (slug: string, code: string) => void;
   isEditMode: boolean;
 }) {
@@ -154,6 +180,7 @@ function DroppableZone({
                   key={t.id}
                   table={t}
                   vendorId={vendorId}
+                  activity={tableActivityMap?.[t.table_code]}
                   onDownload={onDownload}
                   isEditMode={isEditMode}
                 />
@@ -187,6 +214,7 @@ function recomputeTableCodes(
 export function VirtualStorefrontTables({
   tables,
   vendorId,
+  tableActivityMap,
   onDownloadAll,
   onDownloadTable,
   onSaveLayout,
@@ -339,6 +367,7 @@ export function VirtualStorefrontTables({
               label={ZONE_LABELS.north}
               tables={displayTablesByZone.north}
               vendorId={vendorId}
+              tableActivityMap={tableActivityMap}
               onDownload={onDownloadTable}
               isEditMode={isEditMode}
             />
@@ -351,6 +380,7 @@ export function VirtualStorefrontTables({
                 label={ZONE_LABELS.west}
                 tables={displayTablesByZone.west}
                 vendorId={vendorId}
+                tableActivityMap={tableActivityMap}
                 onDownload={onDownloadTable}
                 isEditMode={isEditMode}
               />
@@ -361,6 +391,7 @@ export function VirtualStorefrontTables({
                 label={ZONE_LABELS.east}
                 tables={displayTablesByZone.east}
                 vendorId={vendorId}
+                tableActivityMap={tableActivityMap}
                 onDownload={onDownloadTable}
                 isEditMode={isEditMode}
               />
@@ -373,6 +404,7 @@ export function VirtualStorefrontTables({
               label={ZONE_LABELS.south}
               tables={displayTablesByZone.south}
               vendorId={vendorId}
+              tableActivityMap={tableActivityMap}
               onDownload={onDownloadTable}
               isEditMode={isEditMode}
             />

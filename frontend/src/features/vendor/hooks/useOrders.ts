@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { useEffect } from 'react';
 import { useVendor } from './useVendor';
+import { useQueryClient } from '@tanstack/react-query';
 
 export const useOrders = () => {
   const { data: vendor } = useVendor();
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ['orders', vendor?.id],
@@ -29,14 +31,17 @@ export const useOrders = () => {
     },
     enabled: !!vendor?.id,
     retry: false, // Don't retry on error
+    // Fallback refresh in case realtime events are delayed/dropped.
+    refetchInterval: vendor?.id ? 5000 : false,
   });
 
   // Set up realtime subscription for orders
   useEffect(() => {
     if (!vendor?.id) return;
 
+    const channelName = `orders-changes-${vendor.id}-${Date.now()}`;
     const channel = supabase
-      .channel('orders-changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -46,7 +51,7 @@ export const useOrders = () => {
           filter: `vendor_id=eq.${vendor.id}`,
         },
         () => {
-          query.refetch();
+          queryClient.invalidateQueries({ queryKey: ['orders', vendor.id] });
         }
       )
       .subscribe();
@@ -54,7 +59,7 @@ export const useOrders = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [vendor?.id, query]);
+  }, [vendor?.id, queryClient]);
 
   return query;
 };

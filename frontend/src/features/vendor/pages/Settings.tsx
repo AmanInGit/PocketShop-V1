@@ -22,12 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -40,7 +34,6 @@ import {
   Bell,
   Clock,
   CreditCard,
-  ChevronDown,
   Loader2,
   Save,
   ImageIcon,
@@ -55,6 +48,7 @@ import { useVendorTables } from '@/features/vendor/hooks/useVendorTables';
 import { ConfirmActionDialog } from '@/components/common/ConfirmActionDialog';
 import QRCode from 'qrcode';
 import { formatOfferText } from '@/features/storefront/utils/offerUtils';
+import { SUPPORTED_SERVICE_CITIES } from '@/features/common/constants/serviceCities';
 
 const BUSINESS_TYPES = [
   { value: 'restaurant', label: 'Restaurant' },
@@ -991,50 +985,36 @@ export default function Settings() {
     paymentForm.account_number === confirmAccount;
   const canSavePaymentSetup = !updateMutation.isPending && hasPaymentSetupChanges && (!paymentDirty || bankFieldsValid);
 
-  const currentSection = SETTINGS_SECTIONS.find((x) => x.value === activeTab);
-
   return (
     <div className="animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+      <div className="mb-6">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Settings</h2>
           <p className={textHint}>
             Manage your account, business, and preferences
           </p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className="w-full sm:w-[220px] justify-between font-medium shrink-0 border-primary/50 data-[state=open]:border-primary data-[state=open]:bg-primary/10"
-            >
-              {currentSection ? (
-                <span className="flex items-center gap-2">
-                  <currentSection.icon className="h-4 w-4 shrink-0" />
-                  {currentSection.label}
-                </span>
-              ) : (
-                'Choose section'
-              )}
-              <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[220px]">
-            {SETTINGS_SECTIONS.map((s) => {
-              const isActive = activeTab === s.value;
-              return (
-                <DropdownMenuItem
-                  key={s.value}
-                  onClick={() => handleSectionChange(s.value)}
-                  className={`flex items-center gap-2 ${isActive ? 'bg-primary/15 text-primary font-semibold' : ''}`}
-                >
-                  <s.icon className="h-4 w-4" />
-                  {s.label}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {SETTINGS_SECTIONS.map((section) => {
+            const isActive = activeTab === section.value;
+            return (
+              <button
+                key={section.value}
+                type="button"
+                onClick={() => handleSectionChange(section.value)}
+                aria-current={isActive ? 'page' : undefined}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'border-foreground bg-foreground text-background shadow-sm'
+                    : 'border-border bg-background text-foreground hover:bg-muted'
+                }`}
+              >
+                <section.icon className="h-4 w-4" />
+                {section.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleSectionChange} className="w-full">
@@ -1113,12 +1093,21 @@ export default function Settings() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className={textLabel}>City <RequiredStar /></Label>
-                  <Input
+                  <Select
                     value={businessForm.city}
-                    onChange={(e) => setBusinessForm((p) => ({ ...p, city: e.target.value }))}
-                    placeholder="City"
-                    className="text-foreground"
-                  />
+                    onValueChange={(value) => setBusinessForm((p) => ({ ...p, city: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select city" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SUPPORTED_SERVICE_CITIES.map((city) => (
+                        <SelectItem key={city.value} value={city.value}>
+                          {city.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label className={textLabel}>State</Label>

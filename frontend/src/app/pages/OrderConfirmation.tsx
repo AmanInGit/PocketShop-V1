@@ -24,6 +24,23 @@ interface OrderData {
     subtotal: number;
   }>;
   created_at: string;
+  activated_at?: string | null;
+  delivered_at?: string | null;
+  table_code?: string | null;
+  table_slug?: string | null;
+  kitchen_state?: 'queued' | 'active' | 'done' | null;
+  queue_rank?: number | null;
+  order_sequence_on_table?: number | null;
+  is_followup?: boolean;
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  return `${minutes}m ${seconds}s`;
 }
 
 export default function OrderConfirmation() {
@@ -34,6 +51,7 @@ export default function OrderConfirmation() {
   const [order, setOrder] = useState<OrderData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState<number>(Date.now());
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -69,6 +87,11 @@ export default function OrderConfirmation() {
     fetchOrder();
   }, [orderId]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -103,6 +126,11 @@ export default function OrderConfirmation() {
     : order.payment_method === 'wallet' 
     ? 'Wallet' 
     : 'Online Payment';
+  const timerStart = order.activated_at || order.created_at;
+  const timerEnd = order.delivered_at || new Date(now).toISOString();
+  const startMs = new Date(timerStart).getTime();
+  const endMs = new Date(timerEnd).getTime();
+  const elapsedText = formatDuration(endMs - startMs);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -118,6 +146,13 @@ export default function OrderConfirmation() {
             <div className="text-sm text-gray-500">
               <strong>Order Number:</strong> {order.order_number || order.id}
             </div>
+            {order.table_code && order.table_code !== 'PICKUP' && (
+              <div className="mt-3">
+                <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 border">
+                  Table {order.table_code}
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -162,8 +197,30 @@ export default function OrderConfirmation() {
                   <p>
                     Payment: <span className="capitalize">{order.payment_status}</span>
                   </p>
+                  {order.kitchen_state && (
+                    <p>
+                      Kitchen: <span className="capitalize">{order.kitchen_state}</span>
+                      {order.kitchen_state === 'queued' && order.queue_rank ? ` (Queue #${order.queue_rank})` : ''}
+                    </p>
+                  )}
+                  {order.is_followup && (
+                    <p>
+                      This is a follow-up order{order.order_sequence_on_table ? ` (#${order.order_sequence_on_table})` : ''}.
+                    </p>
+                  )}
                 </div>
               </div>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p><strong>Ordered at:</strong> {new Date(order.created_at).toLocaleString()}</p>
+              {order.delivered_at ? (
+                <>
+                  <p><strong>Delivered at:</strong> {new Date(order.delivered_at).toLocaleString()}</p>
+                  <p><strong>Total duration:</strong> {elapsedText}</p>
+                </>
+              ) : (
+                <p><strong>Elapsed time:</strong> {elapsedText}</p>
+              )}
             </div>
           </CardContent>
         </Card>

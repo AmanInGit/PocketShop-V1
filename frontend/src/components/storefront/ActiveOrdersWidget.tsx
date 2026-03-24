@@ -17,7 +17,13 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
   const { activeOrders, updateOrderStatus } = useActiveOrders(vendorId);
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(true);
-  const [liveOrderStatuses, setLiveOrderStatuses] = useState<Record<string, string>>({});
+  const [liveOrderStatuses, setLiveOrderStatuses] = useState<Record<string, any>>({});
+  const [now, setNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // Subscribe to real-time order updates
   useEffect(() => {
@@ -30,14 +36,14 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
       try {
         const { data, error } = await supabase
           .from('orders')
-          .select('id, status')
+          .select('id, status, kitchen_state, queue_rank, table_code, created_at, activated_at, delivered_at')
           .in('id', orderIds);
 
         if (error) throw error;
 
-        const statusMap: Record<string, string> = {};
+        const statusMap: Record<string, any> = {};
         data?.forEach(order => {
-          statusMap[order.id] = order.status;
+          statusMap[order.id] = order;
         });
         setLiveOrderStatuses(statusMap);
       } catch (error) {
@@ -62,7 +68,10 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
           const updatedOrder = payload.new as any;
           setLiveOrderStatuses(prev => ({
             ...prev,
-            [updatedOrder.id]: updatedOrder.status,
+            [updatedOrder.id]: {
+              ...(prev[updatedOrder.id] || {}),
+              ...updatedOrder,
+            },
           }));
           updateOrderStatus(updatedOrder.id, updatedOrder.status);
           
@@ -142,7 +151,15 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
       {isExpanded && (
         <CardContent className="space-y-3">
           {activeOrders.map((order, index) => {
-            const currentStatus = liveOrderStatuses[order.orderId] || order.status;
+            const liveOrder = liveOrderStatuses[order.orderId];
+            const currentStatus = liveOrder?.status || order.status;
+            const kitchenState = liveOrder?.kitchen_state as string | undefined;
+            const tableCode = liveOrder?.table_code as string | undefined;
+            const queueRank = liveOrder?.queue_rank as number | undefined;
+            const timerStart = liveOrder?.activated_at || liveOrder?.created_at || order.createdAt;
+            const elapsedSeconds = Math.max(0, Math.floor((now - new Date(timerStart).getTime()) / 1000));
+            const mm = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+            const ss = String(elapsedSeconds % 60).padStart(2, '0');
             
             return (
               <div key={order.orderId}>
@@ -167,6 +184,15 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
                       <p className="text-xs text-muted-foreground">
                         ₹{order.totalAmount}
                       </p>
+                      {tableCode && tableCode !== 'PICKUP' && (
+                        <p className="text-xs text-muted-foreground">Table {tableCode}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">Elapsed: {mm}:{ss}</p>
+                      {kitchenState && (
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {kitchenState}{kitchenState === 'queued' && queueRank ? ` (Queue #${queueRank})` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
 

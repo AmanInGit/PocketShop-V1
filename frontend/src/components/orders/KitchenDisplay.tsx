@@ -36,7 +36,10 @@ export function KitchenDisplay() {
   const kitchenOrders = useMemo(() => {
     if (!orders) return [];
     return (orders as { id: string; status?: string; created_at: string; [key: string]: unknown }[])
-      .filter((o) => o.status === 'processing' || o.status === 'ready')
+      .filter((o) => {
+        const status = String(o.status || '').toLowerCase();
+        return status === 'processing' || status === 'preparing' || status === 'ready';
+      })
       .sort(
         (a: { created_at: string }, b: { created_at: string }) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -58,7 +61,10 @@ export function KitchenDisplay() {
   }, [kitchenOrders]);
 
   const aggregatedItems = useMemo(() => {
-    const processingOrders = kitchenOrders.filter((o: { status?: string }) => o.status === 'processing');
+    const processingOrders = kitchenOrders.filter((o: { status?: string }) => {
+      const status = String(o.status || '').toLowerCase();
+      return status === 'processing' || status === 'preparing';
+    });
     const map = new Map<string, AggregatedItem>();
 
     (processingOrders as { id: string; items?: unknown; order_items?: unknown }[]).forEach((order) => {
@@ -130,7 +136,10 @@ export function KitchenDisplay() {
     );
   }
 
-  const processingOrders = kitchenOrders.filter((o: { status?: string }) => o.status === 'processing');
+  const processingOrders = kitchenOrders.filter((o: { status?: string }) => {
+    const status = String(o.status || '').toLowerCase();
+    return status === 'processing' || status === 'preparing';
+  });
   const readyOrders = kitchenOrders.filter((o: { status?: string }) => o.status === 'ready');
 
   return (

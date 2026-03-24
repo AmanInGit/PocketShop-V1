@@ -21,11 +21,13 @@ const ROW_SIZE = 5;
 function SimpleRowLayout({
   tables,
   vendorId,
+  tableActivityMap,
   onDownloadTable,
   onDownloadAll,
 }: {
   tables: VendorTable[];
   vendorId: string;
+  tableActivityMap?: Record<string, { activeCount: number; queueCount: number }>;
   onDownloadTable: (slug: string, code: string) => void;
   onDownloadAll: () => void;
 }) {
@@ -57,6 +59,7 @@ function SimpleRowLayout({
                   table={table}
                   displayLabel={displayLabel}
                   vendorId={vendorId}
+                  activity={tableActivityMap?.[table.table_code]}
                   onDownload={onDownloadTable}
                 />
               ))}
@@ -72,11 +75,13 @@ function TableCardWithQuickView({
   table,
   displayLabel,
   vendorId,
+  activity,
   onDownload,
 }: {
   table: VendorTable;
   displayLabel?: string;
   vendorId: string;
+  activity?: { activeCount: number; queueCount: number };
   onDownload: (slug: string, code: string) => void;
 }) {
   const label = displayLabel ?? table.table_code;
@@ -87,14 +92,35 @@ function TableCardWithQuickView({
     const dataUrl = await QRCode.toDataURL(url, { width: 200, margin: 2 });
     setQrDataUrl(dataUrl);
   };
+  const activeCount = activity?.activeCount ?? 0;
+  const queueCount = activity?.queueCount ?? 0;
+  const urgencyClass =
+    activeCount >= 3
+      ? 'border-red-500 bg-red-50 text-red-700 animate-pulse'
+      : activeCount === 2
+      ? 'border-amber-500 bg-amber-50 text-amber-700 animate-pulse'
+      : activeCount === 1
+      ? 'border-green-500 bg-green-50 text-green-700 animate-pulse'
+      : 'dark:border-white/10';
+
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           onClick={loadQR}
-          className="flex flex-col items-center rounded-lg border p-3 transition-all duration-200 hover:scale-105 hover:bg-muted/50 active:scale-95 dark:border-white/10 dark:hover:bg-muted/40"
+          className={`relative flex flex-col items-center rounded-lg border p-3 transition-all duration-200 hover:scale-105 hover:bg-muted/50 active:scale-95 dark:hover:bg-muted/40 ${urgencyClass}`}
         >
+          {activeCount > 0 && (
+            <span className="absolute -top-2 -left-2 rounded-full bg-emerald-700 text-white text-[10px] px-1.5 py-0.5">
+              A{activeCount}
+            </span>
+          )}
+          {queueCount > 0 && (
+            <span className="absolute -top-2 -right-2 rounded-full bg-slate-900 text-white text-[10px] px-1.5 py-0.5">
+              Q{queueCount}
+            </span>
+          )}
           <span className="mb-2 text-sm font-medium">{label}</span>
           <QrCode className="h-5 w-5 text-muted-foreground" />
         </button>
@@ -119,6 +145,7 @@ function TableCardWithQuickView({
 interface TableQRCardProps {
   tables: VendorTable[];
   vendorId: string;
+  tableActivityMap?: Record<string, { activeCount: number; queueCount: number }>;
   onDownloadTable: (slug: string, code: string) => void;
   onDownloadAll: () => void;
   onSaveLayout: (tablesByZone: Record<ZoneKey, VendorTable[]>) => Promise<void>;
@@ -132,6 +159,7 @@ interface TableQRCardProps {
 export function TableQRCard({
   tables,
   vendorId,
+  tableActivityMap,
   onDownloadTable,
   onDownloadAll,
   onSaveLayout,
@@ -189,6 +217,7 @@ export function TableQRCard({
           <SimpleRowLayout
             tables={displayTables}
             vendorId={vendorId}
+            tableActivityMap={tableActivityMap}
             onDownloadTable={onDownloadTable}
             onDownloadAll={onDownloadAll}
           />
@@ -196,6 +225,7 @@ export function TableQRCard({
           <VirtualStorefrontTables
             tables={displayTables}
             vendorId={vendorId}
+            tableActivityMap={tableActivityMap}
             onDownloadAll={onDownloadAll}
             onDownloadTable={onDownloadTable}
             onSaveLayout={onSaveLayout}

@@ -48,6 +48,7 @@ export function CheckoutForm({
   const [promoInput, setPromoInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'card' | 'upi' | 'wallet' | 'cash' | null>(null);
+  const [isPhoneLocked, setIsPhoneLocked] = useState(false);
 
   const {
     register,
@@ -77,7 +78,7 @@ export function CheckoutForm({
           .from('customer_profiles')
           .select('*')
           .eq('user_id', session.user.id)
-          .single();
+          .maybeSingle();
 
         if (profile) {
           reset({
@@ -86,7 +87,12 @@ export function CheckoutForm({
             email: profile.email || '',
             notes: '',
           });
+          setIsPhoneLocked(!!profile.mobile_number);
+          return;
         }
+        setIsPhoneLocked(false);
+      } else {
+        setIsPhoneLocked(false);
       }
     };
     loadCustomerProfile();
@@ -336,14 +342,14 @@ export function CheckoutForm({
               type="tel"
               {...register('phone')}
               placeholder="9876543210 or +91 9876543210"
-              disabled={isProcessing}
+              disabled={isProcessing || isPhoneLocked}
               className={errors.phone ? 'border-destructive' : ''}
             />
             {errors.phone && (
               <p className="text-sm text-destructive">{errors.phone.message}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Enter your phone number (10-15 digits)
+              {isPhoneLocked ? 'Phone is linked to your account and cannot be changed here.' : 'Enter your phone number (10-15 digits)'}
             </p>
           </div>
 

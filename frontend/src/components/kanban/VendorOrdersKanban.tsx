@@ -322,10 +322,10 @@ export const VendorOrdersKanban: React.FC<VendorOrdersKanbanProps> = ({ vendorId
       }
     });
 
-    // Sort by creation time (newest first)
+    // Sort by creation time (oldest first) across all columns
     Object.keys(grouped).forEach((key) => {
       grouped[key as ColumnId].sort((a, b) => {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
     });
 

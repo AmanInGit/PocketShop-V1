@@ -225,6 +225,17 @@ CREATE TABLE IF NOT EXISTS public.orders (
   -- Customer Contact Info (stored for reference)
   customer_phone TEXT,
   customer_name TEXT,
+  customer_email TEXT,
+  notes TEXT,
+  order_number TEXT,
+  table_code TEXT,
+  table_slug TEXT,
+  order_sequence_on_table INTEGER CHECK (order_sequence_on_table IS NULL OR order_sequence_on_table >= 1),
+  is_followup BOOLEAN NOT NULL DEFAULT FALSE,
+  queue_rank INTEGER,
+  kitchen_state TEXT CHECK (kitchen_state IS NULL OR kitchen_state IN ('queued', 'active', 'done')),
+  activated_at TIMESTAMP WITH TIME ZONE,
+  delivered_at TIMESTAMP WITH TIME ZONE,
   
   -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -238,6 +249,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_guest_session_id ON public.orders(guest_se
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON public.orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON public.orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_vendor_table_status_kitchen_created
+  ON public.orders(vendor_id, table_code, status, kitchen_state, created_at DESC);
 
 -- Enable Row Level Security
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;

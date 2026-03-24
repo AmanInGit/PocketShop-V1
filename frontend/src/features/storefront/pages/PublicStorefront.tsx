@@ -1,7 +1,6 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LazyImage } from "@/components/ui/lazy-image";
 import { ShoppingCart, Store, MapPin, Search, X, Plus, Minus, User, LogOut, LogIn, Sun, Moon, Receipt } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useCart } from "@/contexts/CartContext";
 import { CheckoutForm } from "@/components/checkout/CheckoutForm";
@@ -31,6 +30,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useActiveOrders } from "@/features/vendor/hooks/useActiveOrders";
+const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 
 function MenuItemRow({
   product,
@@ -206,7 +207,9 @@ function OffersCarousel({
     const onSelect = () => setCurrentIndex(api.selectedScrollSnap());
     onSelect();
     api.on("select", onSelect);
-    return () => api.off("select", onSelect);
+    return () => {
+      api.off("select", onSelect);
+    };
   }, [api]);
 
   useEffect(() => {
@@ -299,7 +302,6 @@ export default function PublicStorefront() {
     removeFromCart,
     clearCart,
     getTotalItems,
-    getTotalAmount,
     getItemQuantity,
   } = useCart();
 
@@ -313,28 +315,41 @@ export default function PublicStorefront() {
   const [isRequestingBill, setIsRequestingBill] = useState(false);
   const [lastBillRequestAt, setLastBillRequestAt] = useState<number | null>(null);
   const { theme, toggleTheme } = useTheme();
+  const { activeOrders, addActiveOrder } = useActiveOrders(vendorId);
 
   // Check auth status
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setIsAuthenticated(!!session);
-      setUserEmail(session?.user?.email || "");
-    };
-    checkAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setIsAuthenticated(!!session);
-      setUserEmail(session?.user?.email || "");
-    });
-
-    return () => subscription.unsubscribe();
+  const refreshCustomerAuthState = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const customerViewAuth = localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1';
+    if (!session || !customerViewAuth) {
+      setIsAuthenticated(false);
+      setUserEmail("");
+      return;
+    }
+    const { data: customerProfile } = await supabase
+      .from('customer_profiles')
+      .select('email')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+    const isCustomer = !!customerProfile;
+    setIsAuthenticated(isCustomer);
+    setUserEmail(customerProfile?.email || session.user.email || "");
   }, []);
+
+  useEffect(() => {
+    refreshCustomerAuthState();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      refreshCustomerAuthState();
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [refreshCustomerAuthState]);
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      toast.success('Logged out successfully');
+      localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
+      toast.success('Logged out from customer view');
       setIsAuthenticated(false);
       setUserEmail("");
     } catch (error) {
@@ -364,7 +379,7 @@ export default function PublicStorefront() {
       const { data, error } = await supabase
         .from('vendor_profiles')
         .select('*')
-        .eq('id', vendorId)
+        .eq('id', vendorId!)
         .maybeSingle();
 
       if (error) throw error;
@@ -380,10 +395,10 @@ export default function PublicStorefront() {
     queryKey: ['vendor-table', vendorId, tableSlug],
     queryFn: async () => {
       if (!vendorId || !tableSlug) return null;
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('vendor_tables')
         .select('table_code')
-        .eq('vendor_id', vendorId)
+        .eq('vendor_id', vendorId!)
         .eq('table_slug', tableSlug)
         .maybeSingle();
       if (error) return null;
@@ -392,7 +407,7 @@ export default function PublicStorefront() {
     enabled: !!vendorId && !!tableSlug,
   });
 
-  const tableCode = isPickup ? 'PICKUP' : (tableRecord?.table_code ?? null);
+  const tableCode = isPickup ? 'PICKUP' : ((tableRecord as { table_code?: string } | null)?.table_code ?? null);
   const paymentModes = ((vendor?.metadata as Record<string, unknown>)?.payment_modes as Record<string, unknown> | undefined) ?? {};
   const allowBillRequest = (paymentModes.allow_bill_request as boolean | undefined) ?? true;
   const allowCallWaiter = (paymentModes.allow_call_waiter as boolean | undefined) ?? false;
@@ -409,7 +424,7 @@ export default function PublicStorefront() {
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('vendor_id', vendorId)
+        .eq('vendor_id', vendorId!)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -422,17 +437,6 @@ export default function PublicStorefront() {
     const req = p.availability_mode === "requirement";
     return req ? !p.is_available : (p.stock_quantity != null && p.stock_quantity <= 0);
   };
-
-  // Get unique categories
-  const categories = useMemo(() => {
-    if (!products) return [];
-    const uniqueCategories = new Set(
-      products
-        .map((p) => p.category)
-        .filter((cat): cat is string => !!cat)
-    );
-    return Array.from(uniqueCategories).sort();
-  }, [products]);
 
   // Products filtered by search + veg only (for sidebar - keeps all categories visible)
   const productsForSidebar = useMemo(() => {
@@ -503,7 +507,6 @@ export default function PublicStorefront() {
   }, [vendor?.metadata]);
 
   const [appliedPromoCode, setAppliedPromoCode] = useState("");
-  const subtotal = getTotalAmount();
   const appliedOffer = useMemo(() => {
     if (!appliedPromoCode) return null;
     const cartForEligibility = cartItems.map((i) => ({
@@ -597,6 +600,9 @@ export default function PublicStorefront() {
       if (!vendorId) {
         throw new Error('Storefront not found. Please refresh and try again.');
       }
+      if (tableSlug && !isPickup && !tableCode) {
+        throw new Error('Table is not ready yet. Please wait a moment and try again.');
+      }
 
       // Get authenticated user if any, then resolve customer_profiles.id
       // orders.customer_id must reference customer_profiles(id), NOT auth.users(id)
@@ -635,8 +641,9 @@ export default function PublicStorefront() {
             customerId: customerProfileId,
             discountAmount: discountAmount > 0 ? discountAmount : undefined,
             tableCode: tableCode ?? undefined,
+            tableSlug: tableSlug ?? undefined,
       }, {
-        useEdgeFunction: true, // Try Edge Function first, fallback to direct DB
+        useEdgeFunction: false, // Queue logic currently lives in direct insert + DB RPC
       });
 
       if (!orderData.success) {
@@ -652,6 +659,17 @@ export default function PublicStorefront() {
       }
 
       console.log('Order created successfully, order ID:', order.id);
+      addActiveOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber || order.id,
+        vendorId,
+        vendorName: vendor?.business_name || 'Store',
+        totalAmount: Number(order.totalAmount || 0),
+        status: order.status || 'pending',
+        createdAt: order.createdAt || new Date().toISOString(),
+        paymentMethod: paymentMethod,
+        paymentStatus: order.paymentStatus || 'unpaid',
+      });
 
       // Handle card payment
       if (paymentMethod === 'card') {
@@ -1119,6 +1137,19 @@ export default function PublicStorefront() {
           discountAmount={discountAmount}
           discountLabel={discountLabel}
         />
+      )}
+
+      {!showCheckout && activeOrders.length > 0 && (
+        <div className="fixed bottom-20 left-4 right-4 z-40 md:left-auto md:right-6 md:w-80">
+          <button
+            type="button"
+            onClick={() => navigate(`/order-tracking/${activeOrders[0].orderId}`)}
+            className="w-full rounded-xl bg-green-600 hover:bg-green-700 text-white shadow-lg px-4 py-3 text-left"
+          >
+            <p className="text-sm font-semibold">Track your active order</p>
+            <p className="text-xs opacity-90">Order #{activeOrders[0].orderNumber}</p>
+          </button>
+        </div>
       )}
 
       {/* Image preview modal */}

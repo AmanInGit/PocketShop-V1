@@ -20,12 +20,17 @@ interface OrderData {
   customer_phone: string | null;
   customer_email: string | null;
   total_amount: number;
-  status: 'pending' | 'processing' | 'ready' | 'completed' | 'cancelled';
+  status: 'pending' | 'processing' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   payment_status: string;
   payment_method: string | null;
   created_at: string;
   updated_at: string;
   vendor_id: string;
+  table_code?: string | null;
+  kitchen_state?: 'queued' | 'active' | 'done' | null;
+  queue_rank?: number | null;
+  activated_at?: string | null;
+  delivered_at?: string | null;
   items: Array<{
     product_id?: string;
     name?: string;
@@ -36,12 +41,22 @@ interface OrderData {
   vendor?: { business_name?: string };
 }
 
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
 export default function OrderTracking() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState<number>(Date.now());
 
   const fetchOrder = async () => {
     if (!orderId) return;
@@ -102,6 +117,11 @@ export default function OrderTracking() {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const handleRefresh = () => {
     setIsLoading(true);
     fetchOrder();
@@ -153,10 +173,16 @@ export default function OrderTracking() {
   const statusDisplay: Record<string, string> = {
     pending: 'Order placed',
     processing: 'Being prepared',
+    preparing: 'Being prepared',
     ready: 'Ready for pickup/delivery',
     completed: 'Completed',
     cancelled: 'Unable to deliver',
   };
+  const timerStart = order.activated_at || order.created_at;
+  const timerEnd = order.delivered_at || new Date(now).toISOString();
+  const startMs = new Date(timerStart).getTime();
+  const endMs = new Date(timerEnd).getTime();
+  const elapsedText = formatDuration(endMs - startMs);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
@@ -214,10 +240,25 @@ export default function OrderTracking() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm">
+              {order.table_code && order.table_code !== 'PICKUP' && (
+                <p>
+                  <span className="text-muted-foreground">Table:</span>{' '}
+                  <span className="font-medium">{order.table_code}</span>
+                </p>
+              )}
               <p>
                 <span className="text-muted-foreground">Status:</span>{' '}
                 <span className="font-medium">{statusDisplay[order.status] ?? order.status}</span>
               </p>
+              {order.kitchen_state && (
+                <p>
+                  <span className="text-muted-foreground">Kitchen:</span>{' '}
+                  <span className="font-medium capitalize">
+                    {order.kitchen_state}
+                    {order.kitchen_state === 'queued' && order.queue_rank ? ` (Queue #${order.queue_rank})` : ''}
+                  </span>
+                </p>
+              )}
               <p>
                 <span className="text-muted-foreground">Total:</span>{' '}
                 <span className="font-medium">
@@ -228,6 +269,27 @@ export default function OrderTracking() {
                 <span className="text-muted-foreground">Payment:</span>{' '}
                 <span className="capitalize">{order.payment_method ?? '—'}</span>
               </p>
+              <p>
+                <span className="text-muted-foreground">Ordered at:</span>{' '}
+                <span className="font-medium">{new Date(order.created_at).toLocaleString()}</span>
+              </p>
+              {order.delivered_at ? (
+                <>
+                  <p>
+                    <span className="text-muted-foreground">Delivered at:</span>{' '}
+                    <span className="font-medium">{new Date(order.delivered_at).toLocaleString()}</span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Total duration:</span>{' '}
+                    <span className="font-medium">{elapsedText}</span>
+                  </p>
+                </>
+              ) : (
+                <p>
+                  <span className="text-muted-foreground">Elapsed:</span>{' '}
+                  <span className="font-medium">{elapsedText}</span>
+                </p>
+              )}
             </div>
 
             {items.length > 0 && (

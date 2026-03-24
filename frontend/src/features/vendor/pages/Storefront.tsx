@@ -168,6 +168,25 @@ export default function Storefront() {
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("mobile");
+  const tableActivityMap = useMemo(() => {
+    const map: Record<string, { activeCount: number; queueCount: number }> = {};
+    for (const order of orders || []) {
+      const tableCode = (order as any).table_code as string | null;
+      if (!tableCode || tableCode === 'PICKUP') continue;
+      if (!map[tableCode]) {
+        map[tableCode] = { activeCount: 0, queueCount: 0 };
+      }
+      const status = String((order as any).status || '').toLowerCase();
+      if (status === 'completed' || status === 'cancelled') continue;
+
+      const kitchenState = String((order as any).kitchen_state || '').toLowerCase();
+      // Backward compatible: if kitchen_state is missing for older rows,
+      // treat non-completed/non-cancelled orders as active for storefront urgency.
+      if (kitchenState === 'active' || !kitchenState) map[tableCode].activeCount += 1;
+      if (kitchenState === 'queued') map[tableCode].queueCount += 1;
+    }
+    return map;
+  }, [orders]);
 
   // Calculate statistics (mirrors Migration_Data Storefront behavior).
   const stats = useMemo(() => {
@@ -186,7 +205,7 @@ export default function Storefront() {
       ) || 0;
     const pendingOrders =
       orders?.filter((o: any) =>
-        ["pending", "processing"].includes(o.status),
+        ["pending", "processing", "preparing"].includes(String(o.status || '').toLowerCase()),
       ).length || 0;
 
     return {
@@ -524,6 +543,7 @@ export default function Storefront() {
               tables={tables}
               tableConfig={tableConfig}
               vendorId={vendorId}
+              tableActivityMap={tableActivityMap}
               onDownloadTable={handleDownloadTableQR}
               onDownloadAll={handleDownloadAllTableQRs}
               onSaveLayout={saveLayout}

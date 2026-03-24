@@ -31,6 +31,8 @@ export interface CreateOrderPayload {
   discountAmount?: number;
   /** Table code: "3", "N-T1", or "PICKUP" for walk-in */
   tableCode?: string | null;
+  /** Stable table identity from QR slug */
+  tableSlug?: string | null;
 }
 
 export interface CreateOrderResponse {
@@ -84,7 +86,7 @@ function generateOrderNumber(): string {
  */
 export async function createOrderDirect(payload: CreateOrderPayload): Promise<CreateOrderResponse> {
   try {
-    const { vendorId, items, customerName, customerPhone, customerEmail, paymentMethod, notes, customerId, discountAmount, tableCode } = payload;
+    const { vendorId, items, customerName, customerPhone, customerEmail, paymentMethod, notes, customerId, discountAmount, tableCode, tableSlug } = payload;
 
     // Validate inputs
     if (!vendorId) {
@@ -198,26 +200,66 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
       order_number: orderNumber,
     });
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        vendor_id: vendorId,
-        customer_id: customerId || null,
-        guest_session_id: guestSessionId,
-        items: orderItems,
-        total_amount: totalAmount,
-        status: 'pending',
-        payment_status: paymentStatus,
-        payment_method: paymentMethod || null,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        customer_email: customerEmail || null,
-        order_number: orderNumber,
-        notes: notes || null,
-        table_code: tableCode || null,
-      })
-      .select()
-      .single();
+    const shouldUseTableQueueInsert = !!tableCode && tableCode !== 'PICKUP';
+    let order: any = null;
+    let orderError: any = null;
+
+    if (shouldUseTableQueueInsert) {
+      const { data: rpcOrder, error: rpcError } = await supabase.rpc('create_table_order_with_queue', {
+        p_vendor_id: vendorId,
+        p_customer_id: customerId || null,
+        p_guest_session_id: guestSessionId,
+        p_items: orderItems,
+        p_total_amount: totalAmount,
+        p_status: 'pending',
+        p_payment_status: paymentStatus,
+        p_payment_method: paymentMethod || null,
+        p_customer_name: customerName,
+        p_customer_phone: customerPhone,
+        p_customer_email: customerEmail || null,
+        p_order_number: orderNumber,
+        p_notes: notes || null,
+        p_table_code: tableCode,
+        p_table_slug: tableSlug || null,
+      });
+
+      if (!rpcError && rpcOrder) {
+        order = rpcOrder;
+      } else {
+        // Keep this non-fatal so environments without migration still work.
+        console.warn('Queue insert RPC unavailable, using direct insert fallback:', rpcError?.message);
+      }
+    }
+
+    if (!order) {
+      const directInsert = await supabase
+        .from('orders')
+        .insert({
+          vendor_id: vendorId,
+          customer_id: customerId || null,
+          guest_session_id: guestSessionId,
+          items: orderItems,
+          total_amount: totalAmount,
+          status: 'pending',
+          payment_status: paymentStatus,
+          payment_method: paymentMethod || null,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          customer_email: customerEmail || null,
+          order_number: orderNumber,
+          notes: notes || null,
+          table_code: tableCode || null,
+          table_slug: tableSlug || null,
+          kitchen_state: shouldUseTableQueueInsert ? 'active' : null,
+          activated_at: shouldUseTableQueueInsert ? new Date().toISOString() : null,
+          is_followup: false,
+        })
+        .select()
+        .single();
+
+      order = directInsert.data;
+      orderError = directInsert.error;
+    }
 
     if (orderError) {
       console.error('Error creating order:', orderError);
