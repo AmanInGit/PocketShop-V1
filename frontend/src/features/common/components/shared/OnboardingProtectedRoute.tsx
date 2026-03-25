@@ -88,6 +88,7 @@ export const OnboardingProtectedRoute: React.FC<OnboardingProtectedRouteProps> =
     stage3Completed: false,
   });
   const [onboardingLoading, setOnboardingLoading] = useState(true);
+  const [vendorProfileExists, setVendorProfileExists] = useState<boolean | null>(null);
 
   // Determine target route based on stage completion
   const getTargetRoute = (): string | null => {
@@ -162,6 +163,7 @@ export const OnboardingProtectedRoute: React.FC<OnboardingProtectedRouteProps> =
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
+      setVendorProfileExists(false);
       setOnboardingStatus({
         status: 'incomplete',
         stage1Completed: false,
@@ -174,6 +176,7 @@ export const OnboardingProtectedRoute: React.FC<OnboardingProtectedRouteProps> =
 
     // Cached status from auth (loaded once after login) – no DB call
     if (cachedStatus !== null) {
+      setVendorProfileExists(true);
       const isCompleted = cachedStatus === 'completed';
       const stageCompletion = mapStatusToStages(cachedStatus);
       setOnboardingStatus({
@@ -204,7 +207,10 @@ export const OnboardingProtectedRoute: React.FC<OnboardingProtectedRouteProps> =
 
         if (!mounted) return;
 
-        const status = (error || !data) ? 'incomplete' : (data.onboarding_status || 'incomplete');
+        const exists = Boolean(data) && !error;
+        setVendorProfileExists(exists);
+
+        const status = (!exists) ? 'incomplete' : (data.onboarding_status || 'incomplete');
         const isCompleted = status === 'completed';
         const stageCompletion = mapStatusToStages(status);
 
@@ -212,6 +218,7 @@ export const OnboardingProtectedRoute: React.FC<OnboardingProtectedRouteProps> =
         setCachedStatus(status as any); // cache for future navigations
       } catch (err) {
         if (mounted) {
+          setVendorProfileExists(false);
           setOnboardingStatus({
             status: 'incomplete',
             stage1Completed: false,
@@ -265,9 +272,19 @@ export const OnboardingProtectedRoute: React.FC<OnboardingProtectedRouteProps> =
     );
   }
 
+  // Hard separation: onboarding routes are vendor-only.
+  if (user.role !== 'vendor') {
+    return <Navigate to={ROUTES.CUSTOMER_HOME} replace />;
+  }
+
   // Show loading while checking onboarding status
   if (onboardingLoading || onboardingStatus.status === 'loading') {
     return <LoadingScreen message="Checking onboarding status..." />;
+  }
+
+  // Hard separation: onboarding pages are vendor-only.
+  if (vendorProfileExists === false) {
+    return <Navigate to={ROUTES.CUSTOMER_HOME} replace />;
   }
 
   // Get target route for redirect

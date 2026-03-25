@@ -53,7 +53,7 @@ export default function CustomerProfile() {
   const [otpCooldown, setOtpCooldown] = useState(0);
 
   useEffect(() => {
-    if (!user || !customerViewAuth) return;
+    if (!user || user.role !== 'customer' || !customerViewAuth) return;
     const loadProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
@@ -180,7 +180,7 @@ export default function CustomerProfile() {
   };
 
   useEffect(() => {
-    if (!user || !customerViewAuth) {
+    if (!user || user.role !== 'customer' || !customerViewAuth) {
       setOrdersLoading(false);
       return;
     }
@@ -268,6 +268,7 @@ export default function CustomerProfile() {
   const handleSignOut = async () => {
     localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
     setCustomerViewAuth(false);
+    await signOut();
     navigate(ROUTES.HOME);
   };
 
@@ -294,7 +295,7 @@ export default function CustomerProfile() {
       </header>
 
       <main className="flex-1 px-4 py-6">
-        {!user || !customerViewAuth ? (
+        {!user || user.role !== 'customer' || !customerViewAuth ? (
           <div className="space-y-6">
             <div className="text-center py-6 px-4">
               <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-slate-700 flex items-center justify-center mx-auto mb-4">

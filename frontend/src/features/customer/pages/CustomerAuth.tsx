@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +20,39 @@ const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 
 export default function CustomerAuth() {
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || ROUTES.CUSTOMER_HOME;
+  const rawRedirect = searchParams.get('redirect') || '';
+  const redirect = (() => {
+    // Only allow customer-facing redirects.
+    // Prevents accidental redirects into vendor onboarding after OTP.
+    if (!rawRedirect) return ROUTES.CUSTOMER_HOME;
+
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(rawRedirect);
+      } catch {
+        return rawRedirect;
+      }
+    })();
+
+    const candidate = decoded.startsWith('/') ? decoded : `/${decoded}`;
+    if (candidate.includes('/vendor/')) return ROUTES.CUSTOMER_HOME;
+    if (candidate.startsWith('vendor/')) return ROUTES.CUSTOMER_HOME;
+
+    const allowedPrefixes = [
+      ROUTES.CUSTOMER_HOME,
+      ROUTES.CUSTOMER_PROFILE,
+      ROUTES.SHOPS,
+      '/storefront/',
+      '/order-tracking/',
+      '/order-feedback/',
+      ROUTES.HOME,
+    ];
+
+    const isAllowed = allowedPrefixes.some((p) => candidate === p || candidate.startsWith(p));
+    return isAllowed ? candidate : ROUTES.CUSTOMER_HOME;
+  })();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localInfo, setLocalInfo] = useState<string | null>(null);
@@ -33,6 +65,15 @@ export default function CustomerAuth() {
   });
 
   const normalizedPhone = formData.phone.replace(/\D/g, '').slice(-10);
+
+  useEffect(() => {
+    // Skip auth page when customer is already signed in.
+    if (authLoading) return;
+    if (user?.role === 'customer') {
+      localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '1');
+      navigate(redirect, { replace: true });
+    }
+  }, [authLoading, user, navigate, redirect]);
 
   const ensureCustomerProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession();

@@ -7,7 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { signInWithGoogle, sendOTP, verifyOTP } from '@/features/auth/services/authService';
+import { signInWithGoogle } from '@/features/auth/services/authService';
 import { RegisterConfirm } from '@/features/auth/components/RegisterConfirm';
 import { 
   ArrowLeft, 
@@ -18,17 +18,13 @@ import {
   UserPlus,
   AlertCircle,
   Loader2,
-  Mail,
-  Phone,
-  Smartphone
 } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
-import { preloadDashboard, preloadDashboardOverview, preloadOnboardingStage } from '@/utils/preloaders';
+import { preloadDashboardOverview, preloadOnboardingStage } from '@/utils/preloaders';
 import logoImage from '@/assets/images/logo.png';
 import '@/assets/styles/VendorAuth.css';
 
 type Mode = 'register' | 'login';
-type LoginMethod = 'email' | 'phone';
 
 interface RegisterFormData {
   businessName: string;
@@ -41,11 +37,6 @@ interface RegisterFormData {
 interface EmailFormData {
   email: string;
   password: string;
-}
-
-interface PhoneFormData {
-  phone: string;
-  otp: string;
 }
 
 interface FormErrors {
@@ -122,7 +113,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
       return ROUTES.VENDOR_ONBOARDING_STAGE_1;
     }
   };
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('email');
   const [registerStep, setRegisterStep] = useState<1 | 2>(1);
 
   // Register form state
@@ -139,18 +129,11 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
     email: '',
     password: ''
   });
-  const [phoneFormData, setPhoneFormData] = useState<PhoneFormData>({
-    phone: '',
-    otp: ''
-  });
-
   const [errors, setErrors] = useState<FormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string>('');
 
@@ -230,25 +213,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const validatePhoneLogin = (): boolean => {
-    const newErrors: FormErrors = {};
-
-    if (!phoneFormData.phone.trim()) {
-      newErrors.phone = 'Mobile number is required';
-    } else if (!/^\+?[1-9]\d{0,15}$/.test(phoneFormData.phone.replace(/\s/g, ''))) {
-      newErrors.phone = 'Please enter a valid mobile number';
-    }
-
-    if (otpSent && !phoneFormData.otp.trim()) {
-      newErrors.otp = 'OTP is required';
-    } else if (otpSent && phoneFormData.otp.length !== 6) {
-      newErrors.otp = 'OTP must be 6 digits';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleRegisterInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setRegisterFormData(prev => ({
@@ -267,21 +231,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
   const handleEmailInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setEmailFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const handlePhoneInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setPhoneFormData(prev => ({
       ...prev,
       [name]: value
     }));
@@ -436,57 +385,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
     }
   };
 
-  const handleSendOTP = async () => {
-    if (!validatePhoneLogin()) {
-      return;
-    }
-
-    setOtpLoading(true);
-    try {
-      const { error } = await sendOTP(phoneFormData.phone);
-      if (error) {
-        setErrors({ submit: error.message });
-      } else {
-        setOtpSent(true);
-        setErrors({});
-      }
-    } catch (err) {
-      setErrors({ submit: 'An unexpected error occurred. Please try again.' });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validatePhoneLogin()) {
-      return;
-    }
-
-    setOtpLoading(true);
-    try {
-      const { data, error } = await verifyOTP(phoneFormData.phone, phoneFormData.otp);
-      if (error) {
-        setErrors({ submit: error.message });
-      } else if (data?.user) {
-        // Get redirect path (checks location state first, then onboarding status)
-        // Preload is already handled in getRedirectPath
-        const redirectPath = await getRedirectPath(data.user.id);
-        console.log('Redirecting after OTP verification to:', redirectPath);
-        navigate(redirectPath, { replace: true });
-      } else {
-        // Fallback redirect - preload onboarding stage 1
-        preloadOnboardingStage(1).catch(console.error);
-        navigate(ROUTES.VENDOR_ONBOARDING_STAGE_1, { replace: true });
-      }
-    } catch (err) {
-      setErrors({ submit: 'An unexpected error occurred. Please try again.' });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
   // Don't show full screen loading - only show on button if submitting
   // Allow user to see the form even while checking auth
 
@@ -541,7 +439,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                       setMode('login');
                       navigate(ROUTES.LOGIN);
                       resetRegisterFlow();
-                      setOtpSent(false);
                     }}
                   >
                     <LogIn className="mode-icon" />
@@ -554,7 +451,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                       setMode('register');
                       navigate(ROUTES.REGISTER);
                       resetRegisterFlow();
-                      setOtpSent(false);
                     }}
                   >
                     <UserPlus className="mode-icon" />
@@ -584,7 +480,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                   <button
                     type="button"
                     onClick={handleGoogleLogin}
-                    disabled={googleLoading || isSubmitting || otpLoading}
+                    disabled={googleLoading || isSubmitting}
                     className="btn btn-google"
                   >
                     {googleLoading ? (
@@ -831,35 +727,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                 {/* Login Forms */}
                 {mode === 'login' && (
                   <>
-                    <div className="login-method-toggle">
-                      <button
-                        type="button"
-                        className={`method-btn ${loginMethod === 'email' ? 'active' : ''}`}
-                        onClick={() => {
-                          setLoginMethod('email');
-                          setOtpSent(false);
-                          setErrors({});
-                        }}
-                      >
-                        <Mail className="method-icon" />
-                        Email
-                      </button>
-                      <button
-                        type="button"
-                        className={`method-btn ${loginMethod === 'phone' ? 'active' : ''}`}
-                        onClick={() => {
-                          setLoginMethod('phone');
-                          setOtpSent(false);
-                          setErrors({});
-                        }}
-                      >
-                        <Phone className="method-icon" />
-                        Phone OTP
-                      </button>
-                    </div>
-
-                    {loginMethod === 'email' && (
-                      <form onSubmit={handleEmailLoginSubmit} className="auth-form">
+                    <form onSubmit={handleEmailLoginSubmit} className="auth-form">
                         <div className="form-group">
                           <label htmlFor="email" className="form-label">
                             Email Address
@@ -923,7 +791,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                         <button
                           type="submit"
                           className="btn btn-primary btn-lg submit-btn"
-                          disabled={isSubmitting || safeLoading || googleLoading || otpLoading}
+                        disabled={isSubmitting || safeLoading || googleLoading}
                         >
                           {isSubmitting || safeLoading ? (
                             <>
@@ -938,115 +806,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                           )}
                         </button>
                       </form>
-                    )}
 
-                    {loginMethod === 'phone' && (
-                      <form onSubmit={otpSent ? handleVerifyOTP : undefined} className="auth-form">
-                        <div className="form-group">
-                          <label htmlFor="phone" className="form-label">
-                            Mobile Number
-                          </label>
-                          <input
-                            type="tel"
-                            id="phone"
-                            name="phone"
-                            value={phoneFormData.phone}
-                            onChange={handlePhoneInputChange}
-                            className={`form-input ${errors.phone ? 'error' : ''}`}
-                            placeholder="Enter your mobile number"
-                            autoComplete="tel"
-                            disabled={otpSent}
-                          />
-                          {errors.phone && (
-                            <div className="form-error">
-                              <AlertCircle className="error-icon" />
-                              {errors.phone}
-                            </div>
-                          )}
-                        </div>
-
-                        {otpSent && (
-                          <div className="form-group">
-                            <label htmlFor="otp" className="form-label">
-                              Enter OTP
-                            </label>
-                            <input
-                              type="text"
-                              id="otp"
-                              name="otp"
-                              value={phoneFormData.otp}
-                              onChange={handlePhoneInputChange}
-                              className={`form-input ${errors.otp ? 'error' : ''}`}
-                              placeholder="Enter 6-digit OTP"
-                              maxLength={6}
-                              pattern="[0-9]{6}"
-                            />
-                            {errors.otp && (
-                              <div className="form-error">
-                                <AlertCircle className="error-icon" />
-                                {errors.otp}
-                              </div>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOtpSent(false);
-                                setPhoneFormData(prev => ({ ...prev, otp: '' }));
-                              }}
-                              className="link text-sm mt-2"
-                            >
-                              Change number
-                            </button>
-                          </div>
-                        )}
-
-                        {errors.submit && (
-                          <div className="submit-error">
-                            <AlertCircle className="error-icon" />
-                            {errors.submit}
-                          </div>
-                        )}
-
-                        {!otpSent ? (
-                          <button
-                            type="button"
-                            onClick={handleSendOTP}
-                            className="btn btn-primary btn-lg submit-btn"
-                            disabled={otpLoading || isSubmitting || googleLoading || safeLoading}
-                          >
-                            {otpLoading ? (
-                              <>
-                                <Loader2 className="btn-icon spinning" />
-                                Sending OTP...
-                              </>
-                            ) : (
-                              <>
-                                <Smartphone className="btn-icon" />
-                                Send OTP
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <button
-                            type="submit"
-                            className="btn btn-primary btn-lg submit-btn"
-                            disabled={otpLoading || isSubmitting || googleLoading || safeLoading}
-                          >
-                            {otpLoading ? (
-                              <>
-                                <Loader2 className="btn-icon spinning" />
-                                Verifying...
-                              </>
-                            ) : (
-                              <>
-                                <LogIn className="btn-icon" />
-                                Verify OTP
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </form>
-                    )}
                   </>
                 )}
               </div>

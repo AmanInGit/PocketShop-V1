@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_vendor_table_queue_rank
   ON public.orders(vendor_id, table_code, kitchen_state, queue_rank, created_at)
   WHERE table_code IS NOT NULL;
 
-CREATE OR REPLACE VIEW public.v_active_order_count_per_vendor_table AS
+CREATE OR REPLACE VIEW public.v_active_order_count_per_vendor_table
+WITH (security_invoker = on) AS
 SELECT
   vendor_id,
   table_code,

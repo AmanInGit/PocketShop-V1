@@ -28,12 +28,12 @@ function isEmailConfirmed(session: {
   };
 } | null): boolean {
   if (!session?.user?.email) return false;
-  if (Boolean(session.user.email_confirmed_at)) return true;
+  if (session.user.email_confirmed_at) return true;
   // OAuth (e.g. Google) users are considered confirmed; Supabase may not set email_confirmed_at for them
   const hasOAuthIdentity = session.user.identities?.some(
     (i) => i.provider === 'google' || i.provider === 'apple' || i.provider === 'github'
   );
-  return Boolean(hasOAuthIdentity);
+  return !!hasOAuthIdentity;
 }
 
 export const AuthRouteGuard: React.FC<AuthRouteGuardProps> = ({ children }) => {
@@ -50,6 +50,17 @@ export const AuthRouteGuard: React.FC<AuthRouteGuardProps> = ({ children }) => {
     const checkAndRedirect = async () => {
       if (safeLoading) return;
       if (!user || !session) {
+        if (mounted) {
+          setRedirectPath(null);
+          setCheckingOnboarding(false);
+        }
+        return;
+      }
+
+      // If the current session is not a vendor, DO NOT force a redirect.
+      // This allows “Continue as Business” to open vendor login/signup UI even
+      // when a customer session exists (user can switch accounts by logging in as vendor).
+      if (user.role !== 'vendor') {
         if (mounted) {
           setRedirectPath(null);
           setCheckingOnboarding(false);

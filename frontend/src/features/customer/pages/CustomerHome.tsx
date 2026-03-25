@@ -19,6 +19,8 @@ import {
 import imgQuickBites from '@/assets/images/categories/quick-bites.png';
 import imgFineDining from '@/assets/images/categories/fine-dining.png';
 
+const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
+
 const CATEGORY_IMAGES = {
   quickBites: imgQuickBites,
   fineDining: imgFineDining,
@@ -27,6 +29,8 @@ const CATEGORY_IMAGES = {
 export default function CustomerHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const customerViewAuth = localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1';
+  const hasCustomerAccount = !!user && user.role === 'customer' && customerViewAuth;
   const { getTotalItems } = useCart();
   const cartCount = getTotalItems();
 
@@ -40,9 +44,9 @@ export default function CustomerHome() {
               <Logo size="md" variant="light" />
             </Link>
             <Link
-              to={user ? ROUTES.CUSTOMER_PROFILE : ROUTES.CUSTOMER_AUTH}
+              to={hasCustomerAccount ? ROUTES.CUSTOMER_PROFILE : ROUTES.CUSTOMER_AUTH}
               className="touch-target shrink-0 w-11 h-11 rounded-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-slate-700 active:scale-95 transition-all"
-              aria-label={user ? 'Open profile' : 'Sign in'}
+              aria-label={hasCustomerAccount ? 'Open profile' : 'Sign in'}
             >
               <User className="w-5 h-5 text-gray-700 dark:text-slate-200" aria-hidden="true" />
             </Link>
@@ -131,7 +135,7 @@ export default function CustomerHome() {
         </section>
 
         {/* For signed-in: recent orders placeholder */}
-        {user && (
+        {hasCustomerAccount && (
           <section className="mb-8 sm:mb-10">
             <Link
               to={ROUTES.CUSTOMER_PROFILE}
@@ -153,14 +157,6 @@ export default function CustomerHome() {
 
         {/* Distinct options - For Business, Back to main site */}
         <section className="mt-10 sm:mt-12 space-y-4">
-          <Link
-            to={ROUTES.BUSINESS}
-            className="flex items-center justify-between gap-4 p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 hover:border-orange-200 dark:hover:border-orange-900/60 transition-colors"
-          >
-            <span className="text-base sm:text-lg font-semibold text-gray-900 dark:text-slate-100">For Business</span>
-            <span className="text-sm text-gray-500 dark:text-slate-400">Add your shop</span>
-            <ChevronRight className="w-5 h-5 text-gray-400 dark:text-slate-500 shrink-0" />
-          </Link>
           <Link
             to={ROUTES.HOME}
             className="block text-center text-sm sm:text-base text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 py-4"

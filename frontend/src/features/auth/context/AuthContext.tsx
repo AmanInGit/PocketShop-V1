@@ -36,6 +36,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatusValue | null>(null);
 
+  const resolveUserRole = (sessionUser: any): 'vendor' | 'customer' => {
+    const metadataRole =
+      sessionUser?.user_metadata?.user_type ||
+      sessionUser?.user_metadata?.role ||
+      sessionUser?.app_metadata?.user_type ||
+      sessionUser?.app_metadata?.role;
+
+    if (metadataRole === 'customer' || metadataRole === 'vendor') {
+      return metadataRole;
+    }
+
+    // Phone-only OTP users are customer accounts by default.
+    if (!sessionUser?.email && sessionUser?.phone) {
+      return 'customer';
+    }
+
+    // Existing vendor login/register flows are email-based.
+    return 'vendor';
+  };
+
+  const mapCustomerProfileToUser = (session: Session, customerProfile: any): User => {
+    return {
+      id: customerProfile.user_id || session.user.id,
+      email: customerProfile.email || session.user.email || '',
+      full_name: customerProfile.name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || (session.user.email?.split('@')[0] ?? 'Customer'),
+      avatar_url: customerProfile.logo_url || undefined,
+      role: 'customer',
+      created_at: session.user.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  };
+
   // Helper function to load vendor profile (non-blocking)
   const loadVendorProfile = async (userId: string, sessionUser: any) => {
     try {
@@ -91,13 +123,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const loadCustomerProfile = async (userId: string) => {
+    try {
+      const { data: customerProfile, error: profileError } = await (supabase
+        .from('customer_profiles' as any)
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle()) as any;
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error fetching customer profile:', profileError);
+        return null;
+      }
+
+      return customerProfile;
+    } catch (err) {
+      console.error('Exception loading customer profile:', err);
+      return null;
+    }
+  };
+
   // Helper function to map session/user to User type
-  const mapSessionToUser = (session: Session | null, vendorProfile?: any): User | null => {
+  const mapSessionToUser = (
+    session: Session | null,
+    role: 'vendor' | 'customer',
+    vendorProfile?: any
+  ): User | null => {
     if (!session?.user) {
       return null;
     }
 
-    if (vendorProfile) {
+    if (role === 'vendor' && vendorProfile) {
       return {
         id: vendorProfile.user_id,
         email: vendorProfile.email,
@@ -115,7 +171,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       id: session.user.id,
       email: session.user.email || '',
       full_name: userMetadata.full_name || userMetadata.name || session.user.email?.split('@')[0] || 'Vendor',
-      role: 'vendor',
+      role,
       created_at: session.user.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -175,26 +231,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setSession(session);
           
           if (session?.user) {
+            const role = resolveUserRole(session.user);
             // Set user immediately from session (fast path)
-            const basicUser = mapSessionToUser(session);
+            const basicUser = mapSessionToUser(session, role);
             setUser(basicUser);
             setLoading(false);
 
-            // Load vendor profile in background (non-blocking); cache onboarding status once after login
-            loadVendorProfile(session.user.id, session.user).then((vendorProfile) => {
-              if (mounted) {
-                if (vendorProfile) {
-                  const fullUser = mapSessionToUser(session, vendorProfile);
-                  if (fullUser) setUser(fullUser);
-                  setOnboardingStatus((vendorProfile as any).onboarding_status ?? 'incomplete');
-                } else {
-                  setOnboardingStatus('incomplete');
+            if (role === 'vendor') {
+              // Load vendor profile in background (non-blocking); cache onboarding status once after login
+              loadVendorProfile(session.user.id, session.user).then(async (vendorProfile) => {
+                if (mounted) {
+                  if (vendorProfile) {
+                    const fullUser = mapSessionToUser(session, 'vendor', vendorProfile);
+                    if (fullUser) setUser(fullUser);
+                    setOnboardingStatus((vendorProfile as any).onboarding_status ?? 'incomplete');
+                  } else {
+                    // Fallback: if no vendor profile exists, but customer profile does,
+                    // treat this session as a customer (OTP users often have no user_type metadata).
+                    const customerProfile = await loadCustomerProfile(session.user.id);
+                    if (customerProfile) {
+                      setUser(mapCustomerProfileToUser(session, customerProfile));
+                      setOnboardingStatus(null);
+                    } else {
+                      setOnboardingStatus('incomplete');
+                    }
+                  }
                 }
-              }
-            });
+              });
+            } else {
+              setOnboardingStatus(null);
+            }
           } else {
             // No session found
             setUser(null);
+            setOnboardingStatus(null);
             setLoading(false);
           }
         }
@@ -253,23 +323,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
           setSession(session);
           setLoading(false);
+          const role = resolveUserRole(session.user);
 
           // Set user immediately from session
-          const basicUser = mapSessionToUser(session);
+          const basicUser = mapSessionToUser(session, role);
           setUser(basicUser);
 
-          // Load vendor profile in background; cache onboarding status once after login
-          loadVendorProfile(session.user.id, session.user).then((vendorProfile) => {
-            if (mounted) {
-              if (vendorProfile) {
-                const fullUser = mapSessionToUser(session, vendorProfile);
-                if (fullUser) setUser(fullUser);
-                setOnboardingStatus((vendorProfile as any).onboarding_status ?? 'incomplete');
-              } else {
-                setOnboardingStatus('incomplete');
+          if (role === 'vendor') {
+            // Load vendor profile in background; cache onboarding status once after login
+            loadVendorProfile(session.user.id, session.user).then(async (vendorProfile) => {
+              if (mounted) {
+                if (vendorProfile) {
+                  const fullUser = mapSessionToUser(session, 'vendor', vendorProfile);
+                  if (fullUser) setUser(fullUser);
+                  setOnboardingStatus((vendorProfile as any).onboarding_status ?? 'incomplete');
+                } else {
+                  const customerProfile = await loadCustomerProfile(session.user.id);
+                  if (customerProfile) {
+                    setUser(mapCustomerProfileToUser(session, customerProfile));
+                    setOnboardingStatus(null);
+                  } else {
+                    setOnboardingStatus('incomplete');
+                  }
+                }
               }
-            }
-          });
+            });
+          } else {
+            setOnboardingStatus(null);
+          }
         }
       }
     );
