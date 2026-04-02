@@ -43,7 +43,6 @@ import {
   Eye,
   Mail,
   Phone,
-  MapPin,
   CheckCircle2,
   Sparkles,
   Globe,
@@ -55,6 +54,7 @@ import { useVendor } from "@/features/vendor/hooks/useVendor";
 import { useProducts } from "@/features/vendor/hooks/useProducts";
 import { useOrders } from "@/features/vendor/hooks/useOrders";
 import { useVendorTables } from "@/features/vendor/hooks/useVendorTables";
+import { useVendorStatusContext } from '@/features/vendor/context/VendorStatusContext';
 import { TableQRCard } from "@/features/vendor/components/TableQRCard";
 import { motion } from "framer-motion";
 import QRCode from "qrcode";
@@ -154,6 +154,7 @@ function StatCard({
 
 export default function Storefront() {
   const { data: vendor, isLoading: vendorLoading } = useVendor();
+  const { isOnline } = useVendorStatusContext();
   const { data: products } = useProducts();
   const { data: orders } = useOrders();
   const { updateQRCode, isUpdatingQRCode } = useStorefront();
@@ -356,9 +357,12 @@ export default function Storefront() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="flex items-center gap-2 rounded-2xl border-white/30 bg-white/20 px-4 py-2 text-white backdrop-blur-sm">
+              <Badge
+                className="flex items-center gap-2 rounded-2xl border-white/30 bg-white/20 px-4 py-2 text-white backdrop-blur-sm"
+                title={isOnline ? "Store is online" : "Store is offline"}
+              >
                 <Sparkles className="h-4 w-4" />
-                Active
+                {isOnline ? "Online" : "Offline"}
               </Badge>
               <Button asChild variant="secondary" size="sm" className="border-white/30 bg-white/20 text-white hover:bg-white/30">
                 <Link
@@ -377,12 +381,6 @@ export default function Storefront() {
               <div className="flex items-start gap-2">
                 <Globe className="mt-0.5 h-4 w-4 shrink-0 text-white/80" />
                 <span className="line-clamp-2 text-white/90">{vendor.description}</span>
-              </div>
-            )}
-            {vendor?.address && (
-              <div className="flex items-start gap-2">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/80" />
-                <span className="text-white/90">{vendor.address}</span>
               </div>
             )}
             {vendor?.mobile_number && (
