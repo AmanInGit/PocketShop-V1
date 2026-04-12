@@ -91,4 +91,22 @@ npm run lint     # Linter
 
 MIT – see [LICENSE](LICENSE)
 
+## Contributing
+
+Contributions are welcome! To get started:
+
+1. Fork the repository and create a feature branch from `main`.
+2. Install dependencies:
+   ```bash
+   cd frontend && npm install
+   ```
+3. Make your changes, then run the linter and tests:
+   ```bash
+   npm run lint
+   npm run test
+   ```
+4. Open a pull request describing what you changed and why.
+
+Please keep PRs focused and minimal. Report bugs or suggest features via [GitHub Issues](../../issues).
+
 **Author**: Aman
