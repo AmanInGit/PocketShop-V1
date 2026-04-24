@@ -65,6 +65,8 @@ export interface Order {
   itemsCount?: number;
   /** Total preparation time in minutes (sum of product prep times). Used for overdue highlight. */
   preparationMinutes?: number;
+  /** Priority override used by FIFO queue sorting. */
+  isUrgent?: boolean;
 }
 
 /** Vendor event log entry (used by EventLogger) */

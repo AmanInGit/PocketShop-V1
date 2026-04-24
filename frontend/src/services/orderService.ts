@@ -14,6 +14,7 @@
  */
 
 import { supabase } from '@/lib/supabaseClient';
+import { logAuditEntry } from '@/services/auditService';
 
 export interface CreateOrderPayload {
   vendorId: string;
@@ -297,6 +298,21 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
     }
 
     console.log('Order created successfully:', order.id);
+
+    await logAuditEntry({
+      entityTable: 'orders',
+      entityId: order.id,
+      actionType: 'ORDER_CREATED',
+      stateBefore: null,
+      stateAfter: {
+        id: order.id,
+        status: order.status,
+        payment_status: order.payment_status,
+        payment_method: order.payment_method,
+        total_amount: order.total_amount,
+        created_at: order.created_at,
+      },
+    });
 
     // Ensure payment record exists for non-card orders (fallback if DB trigger not run)
     // UPI/wallet = instant payment → 'completed' so revenue shows immediately

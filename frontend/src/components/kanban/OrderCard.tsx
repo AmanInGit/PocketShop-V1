@@ -19,6 +19,7 @@ import {
   UtensilsCrossed,
   ShoppingBag,
   Info,
+  AlertTriangle,
 } from 'lucide-react';
 import { AcceptanceCountdown } from '@/components/orders/AcceptanceCountdown';
 import type { Order, OrderStatus } from '@/types';
@@ -33,6 +34,7 @@ export interface OrderCardProps {
   isDragging?: boolean;
   /** Highlight when order exceeds 2× preparation time (depends on #7) */
   isOverdue?: boolean;
+  queuePosition?: number;
 }
 
 /**
@@ -131,6 +133,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   onViewMore,
   isDragging = false,
   isOverdue = false,
+  queuePosition,
 }) => {
   const {
     attributes,
@@ -206,6 +209,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         aria-label="Drag to move order"
       >
         <div className="flex items-start gap-3 flex-1">
+          {typeof queuePosition === 'number' && (
+            <span className="inline-flex h-6 min-w-[2rem] items-center justify-center rounded-full bg-orange-100 px-2 text-xs font-semibold text-orange-800">
+              #{queuePosition}
+            </span>
+          )}
           {getOrderTypeIcon(order.orderType)}
           <div className="flex-1 min-w-0">
             <div className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">
@@ -214,6 +222,12 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
               <div className="flex items-center gap-2">
                 <span>{itemsSummary}</span>
+                {isOverdue && (
+                  <span className="inline-flex items-center gap-1 text-red-600 text-xs font-semibold">
+                    <AlertTriangle className="w-3 h-3" />
+                    Stuck
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className={paymentMethod.color}>{paymentMethod.name}</span>

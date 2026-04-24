@@ -9,8 +9,8 @@
  * NOTE: Dark mode styling will be revisited after the full migration is complete.
  */
 
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   IndianRupee,
   ShoppingCart,
@@ -21,15 +21,17 @@ import {
   ArrowDownRight,
   Activity,
   BarChart3,
-  Sparkles,
   Clock,
   Zap,
   Eye,
+  PlayCircle,
+  QrCode,
   LayoutDashboard,
   Store,
   CheckCircle2,
   XCircle,
   Calendar,
+  AlertTriangle,
 } from 'lucide-react';
 import { useVendor } from '@/features/vendor/hooks/useVendor';
 import { useOrders } from '@/features/vendor/hooks/useOrders';
@@ -59,8 +61,11 @@ import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { useOrderContext } from '@/context/OrderProvider';
+import type { OrderStatus } from '@/types';
 import { DraggableMetricCards } from '@/features/vendor/components/DraggableMetricCards';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { ORDER_SLA_MINUTES, isOrderStuck } from '@/constants/orderSla';
 import {
   Dialog,
   DialogContent,
@@ -132,6 +137,20 @@ const getGreeting = () => {
 const formatCurrency = (value: number) =>
   `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+const getRecentOrderAction = (status: OrderStatus): { label: string; nextStatus: OrderStatus } | null => {
+  if (status === 'NEW') return { label: 'Accept', nextStatus: 'IN_PROGRESS' };
+  if (status === 'IN_PROGRESS') return { label: 'Mark Ready', nextStatus: 'READY' };
+  if (status === 'READY') return { label: 'Complete', nextStatus: 'COMPLETED' };
+  return null;
+};
+
+const getSourceLabel = (order: any) => {
+  if (order.orderType === 'DINE_IN') return 'Walk-in';
+  if (order.orderType === 'TAKEAWAY') return 'Takeaway';
+  if (order.orderType === 'DELIVERY') return 'Delivery';
+  return 'Storefront';
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -139,12 +158,19 @@ export default function Dashboard() {
   const { data: vendor, isLoading: vendorLoading } = useVendor();
   const { data: orders, isLoading: ordersLoading } = useOrders();
   const { data: products, isLoading: productsLoading } = useProducts();
-  const { data: paymentStats, isLoading: paymentsLoading } = usePaymentStats();
+  const { isLoading: paymentsLoading } = usePaymentStats();
   const { data: analytics, isLoading: analyticsLoading } = useAnalytics(30);
+  const { orders: liveOrders, changeOrderStatus } = useOrderContext();
   const [metricRange, setMetricRange] = useState<'day' | 'week' | 'month'>('week');
   const [chartRange, setChartRange] = useState<'7d' | 'monthly' | 'lifetime'>('7d');
   const [statusFilter, setStatusFilter] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [quickViewOrder, setQuickViewOrder] = useState<any | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Revenue & orders by selected range (Total Revenue & Total Orders cards)
   const rangeData = (() => {
@@ -178,14 +204,17 @@ export default function Dashboard() {
 
   const totalRevenue = rangeData.revenue;
   const totalOrders = rangeData.orders;
-  const totalProducts = products?.length || 0;
   const lowStockProducts =
     products?.filter((p: any) =>
       p.availability_mode !== 'requirement' &&
       (p.stock_quantity ?? 0) <= (p.low_stock_threshold ?? 10)
     ).length || 0;
 
-  const recentOrders = orders?.slice(0, 5) || [];
+  const recentOrders = useMemo(() => (liveOrders || []).slice(0, 5), [liveOrders]);
+  const pendingLiveOrders = useMemo(
+    () => (liveOrders || []).filter((o) => o.status === 'NEW'),
+    [liveOrders]
+  );
 
   // Filter orders for Order Status section by period
   const ordersForStatus = (() => {
@@ -261,6 +290,22 @@ export default function Dashboard() {
   })();
 
   const vendorName = vendor?.business_name || user?.full_name || 'Vendor';
+
+  const handleRecentOrderAction = async (orderId: string, nextStatus: OrderStatus) => {
+    try {
+      await changeOrderStatus(orderId, nextStatus);
+    } catch (error) {
+      console.error('Failed to change order status from dashboard:', error);
+    }
+  };
+
+  const handleStartNextOrder = async () => {
+    if (pendingLiveOrders.length === 0) return;
+    const nextOrder = [...pendingLiveOrders].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )[0];
+    await handleRecentOrderAction(nextOrder.id, 'IN_PROGRESS');
+  };
 
   if (vendorLoading) {
     return (
@@ -678,7 +723,7 @@ export default function Dashboard() {
           <CardDescription>Common tasks and shortcuts</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <Button
               variant="outline"
               className="w-full justify-start gap-3 h-auto py-3 hover:bg-primary/5 hover:border-primary/30 transition-all group"
@@ -705,6 +750,9 @@ export default function Dashboard() {
                 <p className="font-medium">View Orders</p>
                 <p className="text-xs text-muted-foreground">Manage all orders</p>
               </div>
+              <Badge variant="secondary" className="text-xs">
+                {pendingLiveOrders.length}
+              </Badge>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </Button>
             <Button
@@ -732,6 +780,35 @@ export default function Dashboard() {
               <div className="flex-1 text-left">
                 <p className="font-medium">Analytics</p>
                 <p className="text-xs text-muted-foreground">View insights</p>
+              </div>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-3 hover:bg-emerald-50 hover:border-emerald-300 transition-all group"
+              onClick={handleStartNextOrder}
+              disabled={pendingLiveOrders.length === 0}
+            >
+              <div className="p-2 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-colors">
+                <PlayCircle className="h-4 w-4 text-emerald-700" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-medium">Start Next Order</p>
+                <p className="text-xs text-muted-foreground">Auto-pick oldest pending</p>
+              </div>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-3 hover:bg-blue-50 hover:border-blue-300 transition-all group"
+              onClick={() => navigate('/vendor/dashboard/storefront')}
+            >
+              <div className="p-2 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
+                <QrCode className="h-4 w-4 text-blue-700" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-medium">Share QR</p>
+                <p className="text-xs text-muted-foreground">Bring more walk-ins</p>
               </div>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </Button>
@@ -1014,11 +1091,22 @@ export default function Dashboard() {
             ) : recentOrders.length > 0 ? (
               <div className="space-y-3">
                 {recentOrders.map((order: any) => {
+                  const stuck = isOrderStuck(order, nowMs);
+                  const dashboardStatus =
+                    order.status === 'NEW'
+                      ? 'pending'
+                      : order.status === 'IN_PROGRESS'
+                        ? 'processing'
+                        : order.status === 'READY'
+                          ? 'ready'
+                          : order.status === 'COMPLETED'
+                            ? 'completed'
+                            : 'cancelled';
                   const statusConfig =
-                    ORDER_STATUS_CONFIG[order.status as keyof typeof ORDER_STATUS_CONFIG] ||
+                    ORDER_STATUS_CONFIG[dashboardStatus as keyof typeof ORDER_STATUS_CONFIG] ||
                     ORDER_STATUS_CONFIG.pending;
                   const StatusIcon = statusConfig.icon;
-                  const itemsCount = Array.isArray(order.items) ? order.items.length : 0;
+                  const action = getRecentOrderAction(order.status as OrderStatus);
                   return (
                     <div
                       key={order.id}
@@ -1026,7 +1114,10 @@ export default function Dashboard() {
                       tabIndex={0}
                       onClick={() => setQuickViewOrder(order)}
                       onKeyDown={(e) => e.key === 'Enter' && setQuickViewOrder(order)}
-                      className="group flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-all cursor-pointer hover:shadow-md hover:border-primary/20 relative overflow-hidden"
+                      className={cn(
+                        'group flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-all cursor-pointer hover:shadow-md hover:border-primary/20 relative overflow-hidden',
+                        stuck && 'border-red-300 bg-red-50/40'
+                      )}
                     >
                       <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 translate-x-2 group-hover:translate-x-0">
                         <Eye className="h-4 w-4 text-primary" />
@@ -1042,26 +1133,50 @@ export default function Dashboard() {
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-medium truncate">{order.order_number}</p>
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <p className="font-medium truncate">{order.orderNumber ?? order.id.slice(-6).toUpperCase()}</p>
                             <Badge variant={statusConfig.badgeVariant} className="text-xs">
                               {statusConfig.label}
                             </Badge>
+                            <Badge variant={order.paymentStatus === 'PAID' ? 'default' : 'secondary'} className="text-xs">
+                              {order.paymentStatus === 'PAID' ? 'Paid' : 'Payment Pending'}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {getSourceLabel(order)}
+                            </Badge>
+                            {stuck && (
+                              <Badge variant="destructive" className="text-xs gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Stuck
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                            <span>{order.customer_name || 'Guest'}</span>
+                            <span>{order.customerName || 'Guest'}</span>
                             <span>•</span>
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {format(new Date(order.created_at), 'MMM dd, HH:mm')}
+                              {format(new Date(order.createdAt), 'MMM dd, HH:mm')}
                             </span>
                           </div>
                         </div>
                       </div>
                       <div className="text-right ml-4">
                         <p className="font-semibold text-lg">
-                          {formatCurrency(Number(order.total_amount))}
+                          {formatCurrency(Number(order.total))}
                         </p>
+                        {action && (
+                          <Button
+                            size="sm"
+                            className="mt-2 h-7 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRecentOrderAction(order.id, action.nextStatus);
+                            }}
+                          >
+                            {action.label}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1071,6 +1186,8 @@ export default function Dashboard() {
               <div className="text-center py-8 text-muted-foreground">
                 <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>No orders yet</p>
+                <p className="text-xs mt-1">Share your storefront QR to start receiving orders</p>
+                <p className="text-xs mt-1">SLA alert threshold: {ORDER_SLA_MINUTES} minutes</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1091,7 +1208,7 @@ export default function Dashboard() {
               <>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    Order {quickViewOrder.order_number}
+                    Order {quickViewOrder.orderNumber ?? quickViewOrder.id?.slice(-6)?.toUpperCase()}
                     <Badge
                       variant={
                         ORDER_STATUS_CONFIG[quickViewOrder.status as keyof typeof ORDER_STATUS_CONFIG]
@@ -1106,15 +1223,15 @@ export default function Dashboard() {
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Customer</span>
-                    <span>{quickViewOrder.customer_name || 'Guest'}</span>
+                    <span>{quickViewOrder.customerName || 'Guest'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Date</span>
-                    <span>{format(new Date(quickViewOrder.created_at), 'MMM dd, yyyy HH:mm')}</span>
+                    <span>{format(new Date(quickViewOrder.createdAt), 'MMM dd, yyyy HH:mm')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total</span>
-                    <span className="font-semibold">{formatCurrency(Number(quickViewOrder.total_amount))}</span>
+                    <span className="font-semibold">{formatCurrency(Number(quickViewOrder.total))}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Items</span>

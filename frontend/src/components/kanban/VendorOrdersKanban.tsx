@@ -10,7 +10,7 @@
  * - Real-time updates via OrderProvider
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +45,7 @@ import { useOrderContext } from '@/context/OrderProvider';
 import { useProducts } from '@/features/vendor/hooks/useProducts';
 import type { Order, OrderStatus } from '@/types';
 import { OrderCard } from './OrderCard';
+import { isOrderStuck } from '@/constants/orderSla';
 
 type VendorOrdersKanbanProps = {
   vendorId?: string; // Optional - OrderProvider already has vendorId
@@ -146,6 +147,7 @@ interface KanbanColumnProps {
   onViewMore: (orderId: string) => void;
   onQuickAction: (orderId: string, newStatus: OrderStatus) => void;
   isOverdueMap?: Record<string, boolean>;
+  queuePositionMap?: Record<string, number>;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -154,6 +156,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onViewMore,
   onQuickAction,
   isOverdueMap = {},
+  queuePositionMap = {},
 }) => {
   const orderIds = useMemo(() => orders.map((o) => o.id), [orders]);
   
@@ -214,6 +217,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 onQuickAction={onQuickAction}
                 onViewMore={onViewMore}
                 isOverdue={isOverdueMap[order.id]}
+                queuePosition={queuePositionMap[order.id]}
               />
             ))
           ) : (
@@ -259,6 +263,12 @@ export const VendorOrdersKanban: React.FC<VendorOrdersKanbanProps> = ({ vendorId
   const [pendingStatusChange, setPendingStatusChange] = useState<{ orderId: string; newStatus: OrderStatus } | null>(null);
   const { data: products } = useProducts();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const productPrepMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -282,15 +292,19 @@ export const VendorOrdersKanban: React.FC<VendorOrdersKanbanProps> = ({ vendorId
 
   const isOverdueMap = useMemo(() => {
     const map: Record<string, boolean> = {};
-    const now = Date.now();
+    const now = nowMs;
     ordersWithPrep.forEach((o) => {
-      if (o.status !== 'IN_PROGRESS' || !o.preparationMinutes) return;
+      const slaStuck = isOrderStuck(o, now);
+      if (o.status !== 'IN_PROGRESS' || !o.preparationMinutes) {
+        map[o.id] = slaStuck;
+        return;
+      }
       const startedAt = new Date(o.updatedAt).getTime();
       const twicePrepMs = 2 * o.preparationMinutes * 60 * 1000;
-      map[o.id] = now - startedAt > twicePrepMs;
+      map[o.id] = slaStuck || now - startedAt > twicePrepMs;
     });
     return map;
-  }, [ordersWithPrep]);
+  }, [ordersWithPrep, nowMs]);
 
   // Configure sensors for drag and drop
   const sensors = useSensors(
@@ -322,15 +336,29 @@ export const VendorOrdersKanban: React.FC<VendorOrdersKanbanProps> = ({ vendorId
       }
     });
 
-    // Sort by creation time (oldest first) across all columns
-    Object.keys(grouped).forEach((key) => {
-      grouped[key as ColumnId].sort((a, b) => {
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      });
+    // NEW queue uses strict FIFO with priority tie-breakers.
+    grouped.NEW.sort((a, b) => {
+      const urgentDelta = Number(Boolean(b.isUrgent)) - Number(Boolean(a.isUrgent));
+      if (urgentDelta !== 0) return urgentDelta;
+      const createdDelta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (createdDelta !== 0) return createdDelta;
+      return a.id.localeCompare(b.id);
     });
+
+    // Other columns preserve oldest-first ordering.
+    grouped.IN_PROGRESS.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    grouped.READY.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     return grouped;
   }, [ordersWithPrep]);
+
+  const queuePositionMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    ordersByColumn.NEW.forEach((order, index) => {
+      map[order.id] = index + 1;
+    });
+    return map;
+  }, [ordersByColumn.NEW]);
 
   // Get active order being dragged
   const activeOrder = useMemo(() => {
@@ -476,6 +504,7 @@ export const VendorOrdersKanban: React.FC<VendorOrdersKanbanProps> = ({ vendorId
               onViewMore={handleViewMore}
               onQuickAction={handleQuickAction}
               isOverdueMap={isOverdueMap}
+              queuePositionMap={queuePositionMap}
             />
           ))}
         </div>

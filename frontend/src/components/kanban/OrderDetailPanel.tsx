@@ -259,26 +259,29 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     };
   }, [isOpen]);
 
-  if (!order) return null;
-
-  const eventLog = useMemo(() => generateEventLog(order), [order]);
-  const statusActions = useMemo(() => getStatusActions(order.status), [order.status]);
-  const orderNumber = order.orderNumber ?? order.id.slice(-6).toUpperCase();
-  const customerName = order.customerName ?? 'Anonymous';
+  const eventLog = useMemo(() => (order ? generateEventLog(order) : []), [order]);
+  const statusActions = useMemo(
+    () => (order ? getStatusActions(order.status) : []),
+    [order]
+  );
+  const orderNumber = order?.orderNumber ?? (order?.id ? order.id.slice(-6).toUpperCase() : '—');
+  const customerName = order?.customerName ?? 'Anonymous';
 
   const formattedTotal = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(order.total);
+  }).format(order?.total ?? 0);
 
   // Calculate subtotal from items
   const subtotal = useMemo(() => {
+    if (!order) return 0;
     return order.items.reduce((sum, item) => sum + item.qty * item.price, 0);
-  }, [order.items]);
+  }, [order]);
 
   const handleStatusChange = async (newStatus: OrderStatus) => {
+    if (!order) return;
     const isCOD = (order.paymentMethod ?? '').toString().toUpperCase() === 'CASH';
     // For Cash orders: require confirmation before Mark as Ready and before Complete
     const needsCodConfirm = isCOD && (newStatus === 'READY' || newStatus === 'COMPLETED');
@@ -291,6 +294,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   };
 
   const executeStatusChange = async (newStatus: OrderStatus, markPaymentReceived = false) => {
+    if (!order) return;
     setIsProcessing(true);
     try {
       await onChangeStatus(order.id, newStatus, markPaymentReceived ? { markPaymentReceived: true } : undefined);
@@ -302,6 +306,8 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
       setPendingCompleteStatus(null);
     }
   };
+
+  if (!order) return null;
 
   const panel = (
     <>

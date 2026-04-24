@@ -14,6 +14,14 @@ import type IOrderRepository from '@/services/IOrderRepository';
 import { DemoOrderRepository } from '@/features/vendor/services/demoOrderRepository';
 import { reconcileOrder } from '@/utils/reconciliation';
 
+const ALLOWED_TRANSITIONS: Record<Order['status'], Order['status'][]> = {
+  NEW: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['READY', 'CANCELLED'],
+  READY: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
 export type OrderContextType = {
   orders: Order[];
   menuItems: MenuItem[];
@@ -164,11 +172,15 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({
     }
 
     const prev = orders[idx];
+    const targetStatus = newStatus as Order['status'];
+    if (!ALLOWED_TRANSITIONS[prev.status].includes(targetStatus)) {
+      throw new Error(`Invalid transition: ${prev.status} -> ${targetStatus}`);
+    }
 
     // Create optimistic update
     const optimistic: Order = {
       ...prev,
-      status: newStatus as Order['status'],
+      status: targetStatus,
       ...(options?.markPaymentReceived && { paymentStatus: 'PAID' as const }),
       version: prev.version + 1,
       updatedAt: new Date().toISOString(),

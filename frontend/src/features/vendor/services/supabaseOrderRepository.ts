@@ -8,6 +8,7 @@
 import type IOrderRepository from '@/services/IOrderRepository';
 import type { Order, OrderStatus, MenuItem, ItemStock } from '@/types';
 import { supabase } from '@/lib/supabaseClient';
+import { logAuditEntry } from '@/services/auditService';
 
 // DB status -> frontend OrderStatus
 // PHASE4/schema may use 'processing' (not 'preparing'/'confirmed'); support both
@@ -29,6 +30,14 @@ const UI_TO_DB_STATUS: Record<OrderStatus, string> = {
   READY: 'ready',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
+};
+
+const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  NEW: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['READY', 'CANCELLED'],
+  READY: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
 };
 
 // DB payment_status (orders table: unpaid/paid/refunded) -> frontend PaymentStatus
@@ -75,6 +84,7 @@ function mapDbOrderToOrder(row: any): Order {
     orderNumber: row.order_number ?? row.orderNumber,
     paymentMethod: mapPaymentMethod(row.payment_method ?? row.paymentMethod),
     itemsCount,
+    isUrgent: Boolean(row.is_urgent),
   };
 }
 
@@ -96,7 +106,8 @@ export class SupabaseOrderRepository implements IOrderRepository {
       .from('orders')
       .select('*')
       .eq('vendor_id', vendorId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
 
     if (error) {
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
@@ -148,6 +159,20 @@ export class SupabaseOrderRepository implements IOrderRepository {
     _clientTxnId?: string,
     options?: { markPaymentReceived?: boolean }
   ): Promise<Order> {
+    const { data: currentRow, error: currentError } = await supabase
+      .from('orders')
+      .select('id, status, payment_status, payment_method, updated_at')
+      .eq('id', orderId)
+      .eq('vendor_id', vendorId)
+      .single();
+
+    if (currentError) throw currentError;
+    const currentStatus = DB_TO_UI_STATUS[currentRow?.status] ?? 'NEW';
+    const targetStatus = (newStatus as OrderStatus);
+    if (!ALLOWED_TRANSITIONS[currentStatus].includes(targetStatus)) {
+      throw new Error(`Invalid transition: ${currentStatus} -> ${targetStatus}`);
+    }
+
     const dbStatus = UI_TO_DB_STATUS[newStatus as OrderStatus] ?? newStatus;
 
     const orderUpdate: Record<string, unknown> = { status: dbStatus };
@@ -173,7 +198,27 @@ export class SupabaseOrderRepository implements IOrderRepository {
         .eq('order_id', orderId);
     }
 
-    return mapDbOrderToOrder(data);
+    const mapped = mapDbOrderToOrder(data);
+
+    await logAuditEntry({
+      entityTable: 'orders',
+      entityId: orderId,
+      actionType: options?.markPaymentReceived ? 'PAYMENT_RECEIVED' : 'STATUS_UPDATE',
+      stateBefore: {
+        status: currentStatus,
+        payment_status: currentRow?.payment_status ?? null,
+        payment_method: currentRow?.payment_method ?? null,
+        updated_at: currentRow?.updated_at ?? null,
+      },
+      stateAfter: {
+        status: mapped.status,
+        payment_status: mapped.paymentStatus ?? null,
+        payment_method: mapped.paymentMethod ?? null,
+        updated_at: mapped.updatedAt,
+      },
+    });
+
+    return mapped;
   }
 
   async fetchMenuItems(vendorId: string): Promise<MenuItem[]> {
