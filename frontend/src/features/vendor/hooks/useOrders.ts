@@ -27,7 +27,18 @@ export const useOrders = () => {
         }
         throw error;
       }
-      return data || [];
+      // Webhook-first rule for card payments:
+      // do not show unpaid card orders in vendor operational queues.
+      return (data || []).filter((row: any) => {
+        const method = String(row?.payment_method || '').toLowerCase();
+        const paymentStatus = String(row?.payment_status || '').toLowerCase();
+        const isCard = method === 'card';
+        const isUnknownMethod = !row?.payment_method;
+        const isPaidLike = paymentStatus === 'paid' || paymentStatus === 'completed';
+        // Keep unpaid online/unknown orders out of vendor operational queues.
+        if ((isCard || isUnknownMethod) && !isPaidLike) return false;
+        return true;
+      });
     },
     enabled: !!vendor?.id,
     retry: false, // Don't retry on error

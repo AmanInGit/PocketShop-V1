@@ -43,7 +43,10 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 // DB payment_status (orders table: unpaid/paid/refunded) -> frontend PaymentStatus
 const DB_TO_UI_PAYMENT: Record<string, 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED'> = {
   unpaid: 'PENDING',
+  pending: 'PENDING',
   paid: 'PAID',
+  completed: 'PAID',
+  failed: 'FAILED',
   refunded: 'REFUNDED',
 };
 
@@ -117,7 +120,18 @@ export class SupabaseOrderRepository implements IOrderRepository {
       throw error;
     }
 
-    return (data ?? []).map(mapDbOrderToOrder);
+    const filtered = (data ?? []).filter((row: any) => {
+      const method = String(row?.payment_method || '').toLowerCase();
+      const paymentStatus = String(row?.payment_status || '').toLowerCase();
+      const isCard = method === 'card';
+      const isUnknownMethod = !row?.payment_method;
+      const isPaidLike = paymentStatus === 'paid' || paymentStatus === 'completed';
+      // Keep unpaid online/unknown orders hidden until payment confirmation.
+      if ((isCard || isUnknownMethod) && !isPaidLike) return false;
+      return true;
+    });
+
+    return filtered.map(mapDbOrderToOrder);
   }
 
   subscribeToOrders(vendorId: string, cb: (orders: Order[]) => void): () => void {

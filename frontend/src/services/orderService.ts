@@ -15,6 +15,7 @@
 
 import { supabase } from '@/lib/supabaseClient';
 import { logAuditEntry } from '@/services/auditService';
+import { toE164Phone } from '@/features/common/utils/phone';
 
 export interface CreateOrderPayload {
   vendorId: string;
@@ -88,6 +89,7 @@ function generateOrderNumber(): string {
 export async function createOrderDirect(payload: CreateOrderPayload): Promise<CreateOrderResponse> {
   try {
     const { vendorId, items, customerName, customerPhone, customerEmail, paymentMethod, notes, customerId, discountAmount, tableCode, tableSlug } = payload;
+    const customerPhoneE164 = toE164Phone(customerPhone);
 
     // Validate inputs
     if (!vendorId) {
@@ -98,7 +100,7 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
       return { success: false, error: 'Order must have at least one item' };
     }
 
-    if (!customerName || !customerPhone) {
+    if (!customerName || !customerPhoneE164) {
       return { success: false, error: 'Customer name and phone are required' };
     }
 
@@ -161,7 +163,7 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
           .insert({
             session_token: sessionToken,
             customer_name: customerName,
-            mobile_number: customerPhone,
+            mobile_number: customerPhoneE164,
             email: customerEmail || null,
             is_active: true,
             expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
@@ -216,7 +218,7 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
         p_payment_status: paymentStatus,
         p_payment_method: paymentMethod || null,
         p_customer_name: customerName,
-        p_customer_phone: customerPhone,
+        p_customer_phone: customerPhoneE164,
         p_customer_email: customerEmail || null,
         p_order_number: orderNumber,
         p_notes: notes || null,
@@ -245,7 +247,7 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
           payment_status: paymentStatus,
           payment_method: paymentMethod || null,
           customer_name: customerName,
-          customer_phone: customerPhone,
+          customer_phone: customerPhoneE164,
           customer_email: customerEmail || null,
           order_number: orderNumber,
           notes: notes || null,

@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, ShoppingBag, User, ShoppingCart } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 /** Only show bottom nav on these customer-facing routes (mobile). */
 function isCustomerRoute(pathname: string): boolean {
@@ -16,6 +17,8 @@ export function CustomerBottomNav() {
   const location = useLocation();
   const { getTotalItems } = useCart();
   const cartItemCount = getTotalItems();
+  const currentTab = new URLSearchParams(location.search).get('tab');
+  const LAST_STOREFRONT_PATH_KEY = 'pocketshop_last_storefront_path';
 
   // Only show on customer-facing routes (storefront, customer home/profile, order tracking)
   if (!isCustomerRoute(location.pathname)) {
@@ -41,19 +44,41 @@ export function CustomerBottomNav() {
       // Trigger custom event that PublicStorefront can listen to
       window.dispatchEvent(new CustomEvent('showCart'));
     } else {
-      // Navigate back to storefront if we have vendorId
+      // Navigate back to last storefront where cart items were added.
+      const lastStorefrontPath = localStorage.getItem(LAST_STOREFRONT_PATH_KEY);
+      if (lastStorefrontPath && lastStorefrontPath.startsWith('/storefront/')) {
+        try {
+          const url = new URL(lastStorefrontPath, window.location.origin);
+          url.searchParams.set('openCart', '1');
+          navigate(`${url.pathname}${url.search}`);
+        } catch {
+          const suffix = lastStorefrontPath.includes('?') ? '&openCart=1' : '?openCart=1';
+          navigate(`${lastStorefrontPath}${suffix}`);
+        }
+        return;
+      }
+
+      // Fallback: try vendorId in query params if present.
       const vendorId = new URLSearchParams(location.search).get('vendorId');
       if (vendorId) {
-        navigate(`/storefront/${vendorId}`);
-      } else {
-        navigate('/customer-home');
+        navigate(`/storefront/${vendorId}?openCart=1`);
+        return;
       }
+
+      // Final fallback: route user to shops, with clear feedback.
+      if (cartItemCount > 0) {
+        toast.info('Open a shop to review your cart items.');
+      }
+      navigate('/shops');
     }
   };
 
-  const isActive = (path: string) => {
+  const isActive = (path: string, tab?: string) => {
     if (path === '/storefront') {
       return location.pathname.includes('/storefront/');
+    }
+    if (path === '/customer-profile' && tab) {
+      return location.pathname === path && currentTab === tab;
     }
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
@@ -69,7 +94,8 @@ export function CustomerBottomNav() {
       icon: ShoppingBag,
       label: 'Orders',
       path: '/customer-profile',
-      onClick: () => navigate('/customer-profile'),
+      tab: 'orders',
+      onClick: () => navigate('/customer-profile?tab=orders'),
     },
     {
       icon: ShoppingCart,
@@ -82,7 +108,8 @@ export function CustomerBottomNav() {
       icon: User,
       label: 'Profile',
       path: '/customer-profile',
-      onClick: () => navigate('/customer-profile'),
+      tab: 'profile',
+      onClick: () => navigate('/customer-profile?tab=profile'),
     },
   ];
 
@@ -95,7 +122,7 @@ export function CustomerBottomNav() {
       <div className="flex items-center justify-around h-16 px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active = isActive(item.path);
+          const active = isActive(item.path, item.tab);
 
           return (
             <motion.button

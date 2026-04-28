@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabaseClient';
+import { toE164Phone } from '@/features/common/utils/phone';
 
 export const signUp = async (email: string, password: string, userData: {
   full_name: string;
@@ -55,8 +56,13 @@ export const signInWithGoogle = async () => {
 };
 
 export const sendOTP = async (phone: string) => {
+  const normalizedPhone = toE164Phone(phone);
+  if (!normalizedPhone) {
+    return { data: null, error: { message: 'Invalid phone number format' } };
+  }
+
   const { data, error } = await supabase.auth.signInWithOtp({
-    phone,
+    phone: normalizedPhone,
     options: {
       channel: 'sms',
     },
@@ -65,8 +71,13 @@ export const sendOTP = async (phone: string) => {
 };
 
 export const verifyOTP = async (phone: string, token: string) => {
+  const normalizedPhone = toE164Phone(phone);
+  if (!normalizedPhone) {
+    return { data: null, error: { message: 'Invalid phone number format' } };
+  }
+
   const { data, error } = await supabase.auth.verifyOtp({
-    phone,
+    phone: normalizedPhone,
     token,
     type: 'sms',
     options: {

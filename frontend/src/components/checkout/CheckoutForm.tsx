@@ -55,7 +55,6 @@ export function CheckoutForm({
     handleSubmit,
     formState: { errors },
     reset,
-    getValues,
     trigger,
   } = useForm<CheckoutFormData>({
     resolver: zodResolver(checkoutFormSchema),
@@ -83,11 +82,11 @@ export function CheckoutForm({
         if (profile) {
           reset({
             name: profile.name,
-            phone: profile.mobile_number,
+            phone: profile.phone,
             email: profile.email || '',
             notes: '',
           });
-          setIsPhoneLocked(!!profile.mobile_number);
+          setIsPhoneLocked(!!profile.phone);
           return;
         }
         setIsPhoneLocked(false);
@@ -143,6 +142,32 @@ export function CheckoutForm({
     // Note: We don't reset processing state in finally block if navigation is expected
     // The component will unmount on successful navigation
   };
+
+  const getMethodLabel = (method: 'card' | 'upi' | 'wallet' | 'cash') => {
+    if (method === 'card') return 'Card / Online';
+    if (method === 'upi') return 'UPI';
+    if (method === 'wallet') return 'Wallet';
+    return 'Cash on Delivery';
+  };
+
+  const getMethodConfirmMessage = (method: 'card' | 'upi' | 'wallet' | 'cash') => {
+    const total = Math.max(0, getTotalAmount() - discountAmount).toFixed(2);
+    const base = `Confirm order placement?\n\nPayment Method: ${getMethodLabel(method)}\nTotal: ₹${total}`;
+    if (method === 'cash') {
+      return `${base}\n\nThis COD order will be placed immediately.`;
+    }
+    if (method === 'upi' || method === 'wallet') {
+      return `${base}\n\nThis order will be placed now using ${getMethodLabel(method)}.`;
+    }
+    return `${base}\n\nYou will be redirected to secure card payment.`;
+  };
+
+  const confirmAndPay = (method: 'card' | 'upi' | 'wallet' | 'cash') =>
+    handleSubmit(async (data) => {
+      const confirmed = window.confirm(getMethodConfirmMessage(method));
+      if (!confirmed) return;
+      await handlePaymentMethodSelect(data, method);
+    });
 
   const onSubmit = (_data: CheckoutFormData) => {
     // This will be triggered when any payment method is clicked
@@ -394,7 +419,7 @@ export function CheckoutForm({
               type="button"
               variant={selectedPaymentMethod === 'card' ? 'default' : 'outline'}
               className="h-auto py-4 flex flex-col gap-2"
-              onClick={handleSubmit((data) => handlePaymentMethodSelect(data, 'card'))}
+              onClick={confirmAndPay('card')}
               disabled={isProcessing}
             >
               <CreditCard className="h-6 w-6" />
@@ -405,7 +430,7 @@ export function CheckoutForm({
               type="button"
               variant={selectedPaymentMethod === 'upi' ? 'default' : 'outline'}
               className="h-auto py-4 flex flex-col gap-2"
-              onClick={handleSubmit((data) => handlePaymentMethodSelect(data, 'upi'))}
+              onClick={confirmAndPay('upi')}
               disabled={isProcessing}
             >
               <Smartphone className="h-6 w-6" />
@@ -416,7 +441,7 @@ export function CheckoutForm({
               type="button"
               variant={selectedPaymentMethod === 'wallet' ? 'default' : 'outline'}
               className="h-auto py-4 flex flex-col gap-2"
-              onClick={handleSubmit((data) => handlePaymentMethodSelect(data, 'wallet'))}
+              onClick={confirmAndPay('wallet')}
               disabled={isProcessing}
             >
               <Wallet className="h-6 w-6" />
@@ -427,78 +452,7 @@ export function CheckoutForm({
               type="button"
               variant={selectedPaymentMethod === 'cash' ? 'default' : 'outline'}
               className="h-auto py-4 flex flex-col gap-2 relative"
-              onClick={async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('=== COD BUTTON CLICKED ===');
-                
-                // Get current form values
-                const currentValues = getValues();
-                console.log('Current form values:', currentValues);
-                console.log('Form errors:', errors);
-                
-                // Check if name field is filled - show helpful error if not
-                const nameValue = currentValues.name?.trim() || '';
-                if (!nameValue || nameValue.length < 2) {
-                  const errorMsg = !nameValue 
-                    ? 'Please enter your full name in the "Full Name" field above'
-                    : 'Name must be at least 2 characters';
-                  toast.error(errorMsg, { duration: 6000 });
-                  console.error('Name validation failed:', { 
-                    nameValue, 
-                    length: nameValue.length,
-                    currentValues 
-                  });
-                  // Scroll to name field if it exists
-                  const nameInput = document.getElementById('name');
-                  if (nameInput) {
-                    nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    nameInput.focus();
-                  }
-                  return;
-                }
-                
-                // Check if phone field is filled
-                const phoneValue = currentValues.phone?.trim() || '';
-                const phoneDigits = phoneValue.replace(/\D/g, '');
-                if (!phoneValue || phoneDigits.length < 10) {
-                  const errorMsg = !phoneValue
-                    ? 'Please enter your phone number'
-                    : `Phone number must have at least 10 digits (you entered ${phoneDigits.length})`;
-                  toast.error(errorMsg, { duration: 6000 });
-                  console.error('Phone validation failed:', { 
-                    phoneValue, 
-                    digits: phoneDigits.length 
-                  });
-                  // Scroll to phone field if it exists
-                  const phoneInput = document.getElementById('phone');
-                  if (phoneInput) {
-                    phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    phoneInput.focus();
-                  }
-                  return;
-                }
-                
-                // All required fields are filled, proceed with checkout
-                console.log('All validations passed, proceeding with checkout...');
-                console.log('Form data:', {
-                  name: nameValue,
-                  phone: phoneValue,
-                  email: currentValues.email,
-                  notes: currentValues.notes,
-                });
-                
-                try {
-                  await handlePaymentMethodSelect({
-                    name: nameValue,
-                    phone: phoneValue,
-                    email: currentValues.email || '',
-                    notes: currentValues.notes || '',
-                  }, 'cash');
-                } catch (err) {
-                  console.error('Error in handlePaymentMethodSelect:', err);
-                }
-              }}
+              onClick={confirmAndPay('cash')}
               disabled={isProcessing}
             >
               <Banknote className="h-6 w-6" />

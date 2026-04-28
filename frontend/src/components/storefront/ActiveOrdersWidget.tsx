@@ -14,7 +14,7 @@ interface ActiveOrdersWidgetProps {
 }
 
 export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
-  const { activeOrders, updateOrderStatus } = useActiveOrders(vendorId);
+  const { activeOrders, updateOrderStatus, removeActiveOrder } = useActiveOrders(vendorId);
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(true);
   const [liveOrderStatuses, setLiveOrderStatuses] = useState<Record<string, any>>({});
@@ -46,6 +46,19 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
           statusMap[order.id] = order;
         });
         setLiveOrderStatuses(statusMap);
+
+        const foundIds = new Set((data || []).map((o) => o.id));
+        // If order is deleted, or terminal, remove it from local active cache.
+        activeOrders.forEach((order) => {
+          if (!foundIds.has(order.orderId)) {
+            removeActiveOrder(order.orderId);
+            return;
+          }
+          const status = String(statusMap[order.orderId]?.status || '').toLowerCase();
+          if (status === 'completed' || status === 'cancelled') {
+            removeActiveOrder(order.orderId);
+          }
+        });
       } catch (error) {
         console.error('Error fetching order statuses:', error);
       }
@@ -74,6 +87,9 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
             },
           }));
           updateOrderStatus(updatedOrder.id, updatedOrder.status);
+          if (updatedOrder.status === 'completed' || updatedOrder.status === 'cancelled') {
+            removeActiveOrder(updatedOrder.id);
+          }
           
           // Show notification for status change
           if (updatedOrder.status === 'ready') {
@@ -88,9 +104,14 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeOrders, updateOrderStatus]);
+  }, [activeOrders, updateOrderStatus, removeActiveOrder]);
 
-  if (activeOrders.length === 0) {
+  const visibleOrders = activeOrders.filter((order) => {
+    const liveStatus = String(liveOrderStatuses[order.orderId]?.status || order.status || '').toLowerCase();
+    return liveStatus !== 'completed' && liveStatus !== 'cancelled';
+  });
+
+  if (visibleOrders.length === 0) {
     return null;
   }
 
@@ -135,7 +156,7 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
           <div className="flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" />
             <CardTitle className="text-lg">
-              Active Orders ({activeOrders.length})
+              Active Orders ({visibleOrders.length})
             </CardTitle>
           </div>
           <Button variant="ghost" size="sm">
@@ -150,7 +171,7 @@ export function ActiveOrdersWidget({ vendorId }: ActiveOrdersWidgetProps) {
 
       {isExpanded && (
         <CardContent className="space-y-3">
-          {activeOrders.map((order, index) => {
+          {visibleOrders.map((order, index) => {
             const liveOrder = liveOrderStatuses[order.orderId];
             const currentStatus = liveOrder?.status || order.status;
             const kitchenState = liveOrder?.kitchen_state as string | undefined;

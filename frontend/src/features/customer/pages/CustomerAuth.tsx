@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { toE164Phone, toIndian10DigitPhone } from '@/features/common/utils/phone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -64,7 +65,8 @@ export default function CustomerAuth() {
     otp: '',
   });
 
-  const normalizedPhone = formData.phone.replace(/\D/g, '').slice(-10);
+  const normalizedPhone = toIndian10DigitPhone(formData.phone) || '';
+  const e164Phone = toE164Phone(formData.phone);
 
   useEffect(() => {
     // Skip auth page when customer is already signed in.
@@ -81,16 +83,16 @@ export default function CustomerAuth() {
 
     const { data: existing } = await supabase
       .from('customer_profiles')
-      .select('id, name, mobile_number')
+      .select('id, name, phone')
       .eq('user_id', session.user.id)
       .maybeSingle();
 
     if (existing?.id) {
       // Keep profile phone aligned with verified OTP phone.
-      if (normalizedPhone && existing.mobile_number !== normalizedPhone) {
+      if (e164Phone && existing.phone !== e164Phone) {
         await supabase
           .from('customer_profiles')
-          .update({ mobile_number: normalizedPhone })
+          .update({ phone: e164Phone, phone_verified: true })
           .eq('id', existing.id);
       }
       return;
@@ -99,8 +101,9 @@ export default function CustomerAuth() {
     await supabase.from('customer_profiles').insert({
       user_id: session.user.id,
       name: formData.name.trim() || 'Customer',
-      mobile_number: normalizedPhone,
+      phone: e164Phone,
       email: session.user.email || null,
+      phone_verified: true,
     });
   };
 
@@ -113,7 +116,7 @@ export default function CustomerAuth() {
       setLocalError(`Please wait ${otpCooldown}s before requesting new OTP`);
       return;
     }
-    if (normalizedPhone.length !== 10) {
+    if (!e164Phone || normalizedPhone.length !== 10) {
       setLocalError('Please enter a valid 10-digit mobile number');
       return;
     }
@@ -121,13 +124,13 @@ export default function CustomerAuth() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        phone: `+91${normalizedPhone}`,
+        phone: e164Phone,
         options: { channel: 'sms' },
       });
       if (error) throw error;
       setOtpSent(true);
       setOtpCooldown(30);
-      setLocalInfo(`OTP sent to +91 ${normalizedPhone}`);
+      setLocalInfo(`OTP sent to ${e164Phone}`);
     } catch (error: any) {
       setLocalError(error?.message || 'Failed to send OTP');
     } finally {
@@ -140,7 +143,7 @@ export default function CustomerAuth() {
     if (loading) return;
     setLocalError(null);
     setLocalInfo(null);
-    if (normalizedPhone.length !== 10) {
+    if (!e164Phone || normalizedPhone.length !== 10) {
       setLocalError('Please enter a valid 10-digit mobile number');
       return;
     }
@@ -152,7 +155,7 @@ export default function CustomerAuth() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
-        phone: `+91${normalizedPhone}`,
+        phone: e164Phone,
         token: formData.otp.trim(),
         type: 'sms',
       });

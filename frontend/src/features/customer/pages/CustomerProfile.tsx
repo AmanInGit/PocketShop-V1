@@ -4,10 +4,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
+import { getPhoneLookupCandidates, toE164Phone, toIndian10DigitPhone } from '@/features/common/utils/phone';
 import Logo from '@/features/common/components/Logo';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ interface OrderSummary {
   total_amount: number;
   status: string;
   created_at: string;
+  payment_status?: string | null;
   table_code?: string | null;
   payment_method?: string | null;
   items?: Array<{ name?: string; quantity?: number }>;
@@ -37,9 +39,12 @@ interface OrderSummary {
 
 export default function CustomerProfile() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = requestedTab === 'orders' || requestedTab === 'profile' ? requestedTab : 'profile';
   const { user, signOut, loading: authLoading } = useAuth();
   const [customerViewAuth, setCustomerViewAuth] = useState<boolean>(() => localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1');
-  const [profile, setProfile] = useState<{ name: string; email: string | null; mobile_number: string } | null>(null);
+  const [profile, setProfile] = useState<{ name: string; email: string | null; phone: string } | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [guestPhone, setGuestPhone] = useState('');
@@ -52,6 +57,13 @@ export default function CustomerProfile() {
   const [guestError, setGuestError] = useState<string | null>(null);
   const [otpCooldown, setOtpCooldown] = useState(0);
 
+  const shouldShowInCustomerHistory = (row: { payment_method?: string | null; payment_status?: string | null }) => {
+    const method = String(row.payment_method || '').toLowerCase();
+    const paymentStatus = String(row.payment_status || '').toLowerCase();
+    if (method === 'card' && paymentStatus !== 'paid') return false;
+    return true;
+  };
+
   useEffect(() => {
     if (!user || user.role !== 'customer' || !customerViewAuth) return;
     const loadProfile = async () => {
@@ -59,7 +71,7 @@ export default function CustomerProfile() {
       if (!session?.user) return;
       const { data } = await supabase
         .from('customer_profiles')
-        .select('name, email, mobile_number')
+        .select('name, email, phone')
         .eq('user_id', session.user.id)
         .maybeSingle();
       if (data) setProfile(data);
@@ -84,17 +96,33 @@ export default function CustomerProfile() {
     setGuestOrdersLoading(true);
     setGuestError(null);
     try {
-      const normalized = phone.replace(/\D/g, '').slice(-10);
+      const { data: { session } } = await supabase.auth.getSession();
+      const sessionPhone = session?.user?.phone ?? null;
+      const requestedE164 = toE164Phone(phone);
+
+      // Hard gate: never fetch history unless the authenticated OTP session
+      // matches the requested phone identity.
+      if (!session?.user || !requestedE164 || requestedE164 !== sessionPhone) {
+        setGuestOrders([]);
+        setGuestError('Session verification mismatch. Please verify OTP again.');
+        return;
+      }
+
+      const lookupCandidates = getPhoneLookupCandidates(phone);
+      if (lookupCandidates.length === 0) {
+        setGuestOrders([]);
+        return;
+      }
       const { data, error } = await supabase
         .from('orders')
-        .select('id,total_amount,status,created_at,vendor_id')
-        .eq('customer_phone', normalized)
+        .select('id,total_amount,status,created_at,vendor_id,payment_method,payment_status')
+        .in('customer_phone', lookupCandidates)
         .order('created_at', { ascending: false })
         .limit(20);
 
       if (error) throw error;
 
-      const rows = data || [];
+      const rows = (data || []).filter((row: any) => shouldShowInCustomerHistory(row));
       if (rows.length === 0) {
         setGuestOrders([]);
         return;
@@ -123,8 +151,9 @@ export default function CustomerProfile() {
 
   const handleSendOtp = async () => {
     setGuestError(null);
-    const normalized = guestPhone.replace(/\D/g, '').slice(-10);
-    if (normalized.length !== 10) {
+    const normalized = toIndian10DigitPhone(guestPhone) || '';
+    const e164Phone = toE164Phone(guestPhone);
+    if (!e164Phone || normalized.length !== 10) {
       setGuestError('Enter a valid 10-digit mobile number.');
       return;
     }
@@ -135,7 +164,7 @@ export default function CustomerProfile() {
     setIsSendingOtp(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        phone: `+91${normalized}`,
+        phone: e164Phone,
         options: { channel: 'sms' },
       });
       if (error) throw error;
@@ -151,8 +180,9 @@ export default function CustomerProfile() {
 
   const handleVerifyOtp = async () => {
     setGuestError(null);
-    const normalized = guestPhone.replace(/\D/g, '').slice(-10);
-    if (normalized.length !== 10) {
+    const normalized = toIndian10DigitPhone(guestPhone) || '';
+    const e164Phone = toE164Phone(guestPhone);
+    if (!e164Phone || normalized.length !== 10) {
       setGuestError('Enter a valid 10-digit mobile number.');
       return;
     }
@@ -164,13 +194,19 @@ export default function CustomerProfile() {
     setIsVerifyingOtp(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
-        phone: `+91${normalized}`,
+        phone: e164Phone,
         token: guestOtp.trim(),
         type: 'sms',
       });
       if (error) throw error;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.phone || session.user.phone !== e164Phone) {
+        throw new Error('Verified session does not match requested phone');
+      }
+
       setGuestPhoneVerified(true);
-      await fetchOrdersByPhone(normalized);
+      await fetchOrdersByPhone(e164Phone);
     } catch (error: any) {
       console.error('Failed to verify OTP:', error);
       setGuestError(error?.message || 'OTP verification failed');
@@ -187,10 +223,10 @@ export default function CustomerProfile() {
     const loadOrders = async () => {
       const { data: cp } = await supabase
         .from('customer_profiles')
-        .select('id, mobile_number')
+        .select('id, phone')
         .eq('user_id', user.id)
         .maybeSingle();
-      if (!cp?.id && !cp?.mobile_number) {
+      if (!cp?.id && !cp?.phone) {
         setOrdersLoading(false);
         return;
       }
@@ -207,6 +243,7 @@ export default function CustomerProfile() {
             vendor_id,
             table_code,
             payment_method,
+            payment_status,
             items
           `)
           .eq('customer_id', cp.id)
@@ -215,8 +252,9 @@ export default function CustomerProfile() {
         rows = [...rows, ...(byCustomerId || [])];
       }
 
-      if (cp?.mobile_number) {
-        const normalized = cp.mobile_number.replace(/\D/g, '').slice(-10);
+      if (cp?.phone) {
+        const lookupCandidates = getPhoneLookupCandidates(cp.phone);
+        if (lookupCandidates.length > 0) {
         const { data: byPhone } = await supabase
           .from('orders')
           .select(`
@@ -227,16 +265,18 @@ export default function CustomerProfile() {
             vendor_id,
             table_code,
             payment_method,
+            payment_status,
             items
           `)
-          .eq('customer_phone', normalized)
+          .in('customer_phone', lookupCandidates)
           .order('created_at', { ascending: false })
           .limit(100);
         rows = [...rows, ...(byPhone || [])];
+        }
       }
 
       const dedup = new Map<string, any>();
-      rows.forEach((r) => {
+      rows.filter((r) => shouldShowInCustomerHistory(r)).forEach((r) => {
         if (!dedup.has(r.id)) dedup.set(r.id, r);
       });
 
@@ -295,6 +335,31 @@ export default function CustomerProfile() {
       </header>
 
       <main className="flex-1 px-4 py-6">
+        <div className="mb-4 inline-flex rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1">
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'profile' })}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'profile'
+                ? 'bg-orange-500 text-white'
+                : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            Profile
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'orders' })}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'orders'
+                ? 'bg-orange-500 text-white'
+                : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            Orders
+          </button>
+        </div>
+
         {!user || user.role !== 'customer' || !customerViewAuth ? (
           <div className="space-y-6">
             <div className="text-center py-6 px-4">
@@ -313,6 +378,19 @@ export default function CustomerProfile() {
               </Link>
             </div>
 
+            {activeTab === 'profile' && (
+              <section className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Profile
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-slate-400">
+                  Sign in to manage account details, saved identity, and full order history.
+                </p>
+              </section>
+            )}
+
+            {activeTab === 'orders' && (
             <section className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4">
               <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100 mb-2 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4" />
@@ -394,38 +472,44 @@ export default function CustomerProfile() {
                 </div>
               )}
             </section>
+            )}
           </div>
         ) : (
           <>
-            {/* Profile card */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6 mb-6">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-orange-600">
-                    {(profile?.name || user.full_name || 'U')[0]}
-                  </span>
+            {activeTab === 'profile' && (
+              <>
+                {/* Profile card */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6 mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
+                      <span className="text-2xl font-bold text-orange-600">
+                        {(profile?.name || user.full_name || 'U')[0]}
+                      </span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">
+                        {profile?.name || user.full_name || 'Customer'}
+                      </h2>
+                      {profile?.email && (
+                        <p className="text-sm text-gray-600 dark:text-slate-400 flex items-center gap-2">
+                          <Mail className="w-4 h-4" />
+                          {profile.email}
+                        </p>
+                      )}
+                      {profile?.phone && (
+                        <p className="text-sm text-gray-600 dark:text-slate-400 flex items-center gap-2">
+                          <Phone className="w-4 h-4" />
+                          {profile.phone}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">
-                    {profile?.name || user.full_name || 'Customer'}
-                  </h2>
-                  {profile?.email && (
-                    <p className="text-sm text-gray-600 dark:text-slate-400 flex items-center gap-2">
-                      <Mail className="w-4 h-4" />
-                      {profile.email}
-                    </p>
-                  )}
-                  {profile?.mobile_number && (
-                    <p className="text-sm text-gray-600 dark:text-slate-400 flex items-center gap-2">
-                      <Phone className="w-4 h-4" />
-                      {profile.mobile_number}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {/* My orders */}
+            {activeTab === 'orders' && (
             <section className="mb-6">
               <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-3">My orders</h3>
               {ordersLoading ? (
@@ -491,6 +575,7 @@ export default function CustomerProfile() {
                 </div>
               )}
             </section>
+            )}
 
             {/* Sign out */}
             <button

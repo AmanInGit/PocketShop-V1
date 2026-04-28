@@ -136,6 +136,10 @@ export default function Payouts() {
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [timeRange, setTimeRange] = useState<string>("7d");
 
+  const isRevenueEligible = (payment: any) =>
+    payment?.payment_status === "completed" &&
+    payment?.orders?.status !== "cancelled";
+
   // Real-time payment updates (adapted to current query keys)
   useEffect(() => {
     if (!vendor?.id) return;
@@ -191,7 +195,7 @@ export default function Payouts() {
         const dayPayments = (payments || []).filter(
           (p: any) =>
             p.created_at?.startsWith(dateStr) &&
-            p.payment_status === "completed"
+            isRevenueEligible(p)
         );
         const revenue = dayPayments.reduce(
           (sum: number, p: any) => sum + Number(p.amount),
@@ -216,7 +220,7 @@ export default function Payouts() {
           return (
             paymentDate >= weekStart &&
             paymentDate <= weekEnd &&
-            p.payment_status === "completed"
+            isRevenueEligible(p)
           );
         });
         const revenue = weekPayments.reduce(
@@ -267,9 +271,7 @@ export default function Payouts() {
   // Count successful payments
   const successfulPaymentsCount = useMemo(() => {
     if (!payments) return 0;
-    return (payments || []).filter(
-      (p: any) => p.payment_status === "completed"
-    ).length;
+    return (payments || []).filter((p: any) => isRevenueEligible(p)).length;
   }, [payments]);
 
   // Filter payments by status / method / search

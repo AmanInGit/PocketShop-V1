@@ -87,7 +87,11 @@ export const usePaymentStats = () => {
       }
 
       const totalRevenue = (payments || [])
-        .filter(p => p.payment_status === 'completed')
+        .filter(
+          (p: any) =>
+            p.payment_status === 'completed' &&
+            p.orders?.status !== 'cancelled'
+        )
         .reduce((sum, p) => sum + Number(p.amount), 0);
 
       // Exclude cancelled orders - they will never be paid
@@ -100,12 +104,13 @@ export const usePaymentStats = () => {
         .reduce((sum, p) => sum + Number(p.amount), 0);
 
       const thisMonth = (payments || [])
-        .filter(p => {
+        .filter((p: any) => {
           const date = new Date(p.created_at);
           const now = new Date();
           return date.getMonth() === now.getMonth() && 
                  date.getFullYear() === now.getFullYear() &&
-                 p.payment_status === 'completed';
+                 p.payment_status === 'completed' &&
+                 p.orders?.status !== 'cancelled';
         })
         .reduce((sum, p) => sum + Number(p.amount), 0);
 

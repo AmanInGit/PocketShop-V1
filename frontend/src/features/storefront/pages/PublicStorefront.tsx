@@ -32,6 +32,30 @@ import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useActiveOrders } from "@/features/vendor/hooks/useActiveOrders";
 const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
+const LAST_STOREFRONT_PATH_KEY = 'pocketshop_last_storefront_path';
+
+function redirectToCheckout(url: string) {
+  try {
+    // If storefront is embedded in vendor dashboard preview iframe,
+    // do NOT hijack the parent app. Open checkout in a separate tab.
+    if (window.top && window.top !== window.self) {
+      const popup = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!popup) {
+        toast.error('Popup blocked. Please allow popups to continue payment.');
+      }
+      return;
+    }
+  } catch {
+    // Cross-origin frame access can throw; fallback below.
+  }
+
+  try {
+    window.location.assign(url);
+  } catch {
+    // Last resort fallback for strict browser contexts.
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
 
 function MenuItemRow({
   product,
@@ -292,7 +316,7 @@ function OffersCarousel({
 export default function PublicStorefront() {
   const { vendorId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tableSlug = searchParams.get("table");
   const isPickup = searchParams.get("pickup") === "1";
   const {
@@ -316,6 +340,19 @@ export default function PublicStorefront() {
   const [lastBillRequestAt, setLastBillRequestAt] = useState<number | null>(null);
   const { theme, toggleTheme } = useTheme();
   const { activeOrders, addActiveOrder } = useActiveOrders(vendorId);
+  const isEmbeddedPreview = useMemo(() => {
+    try {
+      return window.top !== window.self;
+    } catch {
+      return true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!vendorId) return;
+    const storefrontPath = `${window.location.pathname}${window.location.search}`;
+    localStorage.setItem(LAST_STOREFRONT_PATH_KEY, storefrontPath);
+  }, [vendorId, searchParams]);
 
   // Check auth status
   const refreshCustomerAuthState = useCallback(async () => {
@@ -371,6 +408,20 @@ export default function PublicStorefront() {
     window.addEventListener('showCart', handleShowCart);
     return () => window.removeEventListener('showCart', handleShowCart);
   }, []);
+
+  // One-tap cart handoff from non-storefront pages via query param.
+  useEffect(() => {
+    if (searchParams.get('openCart') !== '1') return;
+    const total = getTotalItems();
+    if (total > 0) {
+      setShowCheckout(true);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('openCart');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, getTotalItems]);
 
   // Fetch vendor data (with or without is_active so we can show "closed" state)
   const { data: vendor, isLoading: vendorLoading } = useQuery({
@@ -636,7 +687,7 @@ export default function PublicStorefront() {
             customerName: customerData.name,
             customerPhone: customerData.phone,
             customerEmail: customerData.email || null,
-            paymentMethod: paymentMethod !== 'card' ? paymentMethod : null,
+            paymentMethod,
             notes: customerData.notes || null,
             customerId: customerProfileId,
             discountAmount: discountAmount > 0 ? discountAmount : undefined,
@@ -659,17 +710,6 @@ export default function PublicStorefront() {
       }
 
       console.log('Order created successfully, order ID:', order.id);
-      addActiveOrder({
-        orderId: order.id,
-        orderNumber: order.orderNumber || order.id,
-        vendorId,
-        vendorName: vendor?.business_name || 'Store',
-        totalAmount: Number(order.totalAmount || 0),
-        status: order.status || 'pending',
-        createdAt: order.createdAt || new Date().toISOString(),
-        paymentMethod: paymentMethod,
-        paymentStatus: order.paymentStatus || 'unpaid',
-      });
 
       // Handle card payment
       if (paymentMethod === 'card') {
@@ -679,9 +719,9 @@ export default function PublicStorefront() {
           {
             body: {
               orderId: order.id,
-              orderAmount: order.totalAmount,
               customerEmail: customerData.email,
               customerName: customerData.name,
+              vendorId,
             },
           }
         );
@@ -692,24 +732,34 @@ export default function PublicStorefront() {
         }
 
         if (sessionData?.url) {
-          window.open(sessionData.url, '_blank');
+          redirectToCheckout(sessionData.url);
           toast.success("Redirecting to payment...");
-            clearCart();
-            setShowCheckout(false);
+          // Keep cart state cleanup only when checkout handoff is successful.
+          clearCart();
+          setShowCheckout(false);
           } else {
             throw new Error('Payment session URL not received. Please try again.');
           }
         } catch (paymentError: any) {
           console.error('Payment processing error:', paymentError);
-          // Order was created but payment failed - still show success but warn user
-          toast.error(paymentError.message || 'Payment processing failed. Your order was created but payment is pending.');
-          clearCart();
-          setShowCheckout(false);
-          navigate(`/order-confirmation?orderId=${order.id}&vendorId=${vendorId}`);
+          // Do not treat failed card session creation as successful checkout.
+          toast.error(paymentError.message || 'Unable to open card payment. Please try again.');
+          return;
         }
       } else {
         // For non-card payments (UPI, wallet, cash), navigate to order confirmation
         console.log('Navigating to order confirmation for order:', order.id);
+        addActiveOrder({
+          orderId: order.id,
+          orderNumber: order.orderNumber || order.id,
+          vendorId,
+          vendorName: vendor?.business_name || 'Store',
+          totalAmount: Number(order.totalAmount || 0),
+          status: order.status || 'pending',
+          createdAt: order.createdAt || new Date().toISOString(),
+          paymentMethod: paymentMethod,
+          paymentStatus: order.paymentStatus || 'unpaid',
+        });
         clearCart();
         setShowCheckout(false);
         toast.success('Order placed successfully!');
@@ -893,21 +943,28 @@ export default function PublicStorefront() {
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 md:px-6 -mt-6 py-10 space-y-6">
         {showCheckout ? (
-          <CheckoutForm
-            onBack={() => {
-              setShowCheckout(false);
-              setAppliedPromoCode("");
-            }}
-            onCheckout={handleCheckout}
-            discountAmount={discountAmount}
-            discountLabel={discountLabel}
-            nonEligibleItemNames={nonEligibleItemNames}
-            appliedPromoCode={appliedPromoCode}
-            onApplyPromo={setAppliedPromoCode}
-            onRemovePromo={() => setAppliedPromoCode("")}
-            offers={offers}
-            products={products ?? []}
-          />
+          <>
+            {isEmbeddedPreview && (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-200">
+                In vendor preview mode, card payment opens Stripe in a new tab to keep your dashboard session intact.
+              </div>
+            )}
+            <CheckoutForm
+              onBack={() => {
+                setShowCheckout(false);
+                setAppliedPromoCode("");
+              }}
+              onCheckout={handleCheckout}
+              discountAmount={discountAmount}
+              discountLabel={discountLabel}
+              nonEligibleItemNames={nonEligibleItemNames}
+              appliedPromoCode={appliedPromoCode}
+              onApplyPromo={setAppliedPromoCode}
+              onRemovePromo={() => setAppliedPromoCode("")}
+              offers={offers}
+              products={products ?? []}
+            />
+          </>
         ) : (
           <>
             {/* Active Orders Widget */}
