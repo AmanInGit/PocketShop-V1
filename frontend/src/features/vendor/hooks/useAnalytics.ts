@@ -13,11 +13,12 @@ import {
   startOfWeek,
   endOfWeek,
 } from 'date-fns';
-
-const isAnalyticsEligibleOrder = (order: any) => {
-  const paymentStatus = String(order?.payment_status || '').toLowerCase();
-  return paymentStatus === 'paid' || paymentStatus === 'completed';
-};
+import {
+  getOrderAmount,
+  getOrderCreatedAt,
+  isCompletedOrderStatus,
+  normalizeOrderStatus,
+} from '@/features/vendor/utils/metrics';
 
 export const useAnalytics = (days: number = 30) => {
   const { data: vendor } = useVendor();
@@ -27,7 +28,8 @@ export const useAnalytics = (days: number = 30) => {
     queryFn: async () => {
       if (!vendor?.id) throw new Error('No vendor ID');
 
-      const startDate = startOfDay(subDays(new Date(), Math.max(days, 365)));
+      const selectedDays = Math.max(days, 1);
+      const startDate = startOfDay(subDays(new Date(), selectedDays - 1));
 
       // Fetch orders (items are stored as JSONB in orders table)
       const { data: orders, error: ordersError } = await supabase
@@ -46,41 +48,57 @@ export const useAnalytics = (days: number = 30) => {
         throw ordersError;
       }
 
-      const eligibleOrders = (orders || []).filter(isAnalyticsEligibleOrder);
+      const revenueOrders = (orders || []).filter((order) => isCompletedOrderStatus(order.status));
 
       // Calculate daily sales (key: yyyy-MM-dd for correct sort)
-      const salesByDayRaw = eligibleOrders.reduce((acc, order) => {
-        const day = format(parseISO(order.created_at), 'yyyy-MM-dd');
-        acc[day] = (acc[day] || 0) + Number(order.total_amount);
+      const salesByDayRaw = revenueOrders.reduce((acc, order) => {
+        const createdAt = getOrderCreatedAt(order);
+        if (!createdAt) return acc;
+        const day = format(parseISO(createdAt), 'yyyy-MM-dd');
+        if (!acc[day]) {
+          acc[day] = { amount: 0, orders: 0 };
+        }
+        acc[day].amount += getOrderAmount(order);
+        acc[day].orders += 1;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, { amount: number; orders: number }>);
 
       // Calculate monthly sales (key: yyyy-MM for correct sort)
-      const salesByMonthRaw = eligibleOrders.reduce((acc, order) => {
-        const month = format(parseISO(order.created_at), 'yyyy-MM');
-        acc[month] = (acc[month] || 0) + Number(order.total_amount);
+      const salesByMonthRaw = revenueOrders.reduce((acc, order) => {
+        const createdAt = getOrderCreatedAt(order);
+        if (!createdAt) return acc;
+        const month = format(parseISO(createdAt), 'yyyy-MM');
+        if (!acc[month]) {
+          acc[month] = { amount: 0, orders: 0 };
+        }
+        acc[month].amount += getOrderAmount(order);
+        acc[month].orders += 1;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, { amount: number; orders: number }>);
 
       const salesByDay = Object.entries(salesByDayRaw || {})
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([day, amount]) => ({
+        .map(([day, values]) => ({
           date: format(parseISO(day), 'MMM dd'),
           label: format(parseISO(day), 'MMM dd'),
-          amount,
+          amount: values.amount,
+          orders: values.orders,
         }));
 
       const salesByMonth = Object.entries(salesByMonthRaw || {})
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([month, amount]) => ({
+        .map(([month, values]) => ({
           date: format(parseISO(month + '-01'), 'MMM yy'),
           label: format(parseISO(month + '-01'), 'MMM yy'),
-          amount,
+          amount: values.amount,
+          orders: values.orders,
         }));
 
       // Calculate hourly distribution (peak hours)
-      const ordersByHour = eligibleOrders.reduce((acc, order) => {
-        const hour = new Date(order.created_at).getHours();
+      const ordersByHour = (orders || []).reduce((acc, order) => {
+        const createdAt = getOrderCreatedAt(order);
+        if (!createdAt) return acc;
+        const hour = new Date(createdAt).getHours();
         acc[hour] = (acc[hour] || 0) + 1;
         return acc;
       }, {} as Record<number, number>);
@@ -105,7 +123,7 @@ export const useAnalytics = (days: number = 30) => {
 
       // Calculate product performance
       // Items are stored as JSONB array in orders.items
-      const productStats = eligibleOrders.reduce((acc, order) => {
+      const productStats = revenueOrders.reduce((acc, order) => {
         const items = order.items || [];
         if (Array.isArray(items)) {
           items.forEach((item: any) => {
@@ -145,8 +163,9 @@ export const useAnalytics = (days: number = 30) => {
       }, {} as Record<string, any>);
 
       // Calculate status distribution
-      const statusDistribution = eligibleOrders.reduce((acc, order) => {
-        acc[order.status] = (acc[order.status] || 0) + 1;
+      const statusDistribution = (orders || []).reduce((acc, order) => {
+        const normalizedStatus = normalizeOrderStatus(order.status);
+        acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
@@ -155,49 +174,65 @@ export const useAnalytics = (days: number = 30) => {
       const lastWeekStart = startOfWeek(subDays(new Date(), 7));
       const lastWeekEnd = endOfWeek(subDays(new Date(), 7));
 
-      const thisWeekOrders = eligibleOrders.filter(o => 
-        new Date(o.created_at) >= thisWeekStart
-      );
+      const thisWeekOrders = (orders || []).filter((o) => {
+        const createdAt = getOrderCreatedAt(o);
+        return createdAt ? new Date(createdAt) >= thisWeekStart : false;
+      });
       
-      const lastWeekOrders = eligibleOrders.filter(o => {
-        const date = new Date(o.created_at);
+      const lastWeekOrders = (orders || []).filter((o) => {
+        const createdAt = getOrderCreatedAt(o);
+        if (!createdAt) return false;
+        const date = new Date(createdAt);
         return date >= lastWeekStart && date <= lastWeekEnd;
       });
-
-      const thisWeekRevenue = thisWeekOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
-      const lastWeekRevenue = lastWeekOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+      const thisWeekRevenueOrders = thisWeekOrders.filter((o) => isCompletedOrderStatus(o.status));
+      const lastWeekRevenueOrders = lastWeekOrders.filter((o) => isCompletedOrderStatus(o.status));
+      const thisWeekRevenue = thisWeekRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
+      const lastWeekRevenue = lastWeekRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
 
       // Day comparison (today vs yesterday)
       const todayStart = startOfDay(new Date());
       const todayEnd = endOfDay(new Date());
       const yesterdayStart = startOfDay(subDays(new Date(), 1));
       const yesterdayEnd = endOfDay(subDays(new Date(), 1));
-      const todayOrders = eligibleOrders.filter((o) => {
-        const d = new Date(o.created_at);
+      const todayOrders = (orders || []).filter((o) => {
+        const createdAt = getOrderCreatedAt(o);
+        if (!createdAt) return false;
+        const d = new Date(createdAt);
         return d >= todayStart && d <= todayEnd;
       });
-      const yesterdayOrders = eligibleOrders.filter((o) => {
-        const d = new Date(o.created_at);
+      const yesterdayOrders = (orders || []).filter((o) => {
+        const createdAt = getOrderCreatedAt(o);
+        if (!createdAt) return false;
+        const d = new Date(createdAt);
         return d >= yesterdayStart && d <= yesterdayEnd;
       });
-      const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
-      const yesterdayRevenue = yesterdayOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+      const todayRevenueOrders = todayOrders.filter((o) => isCompletedOrderStatus(o.status));
+      const yesterdayRevenueOrders = yesterdayOrders.filter((o) => isCompletedOrderStatus(o.status));
+      const todayRevenue = todayRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
+      const yesterdayRevenue = yesterdayRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
 
       // Month comparison (this month vs last month)
       const thisMonthStart = startOfMonth(new Date());
       const thisMonthEnd = endOfMonth(new Date());
       const lastMonthStart = startOfMonth(subMonths(new Date(), 1));
       const lastMonthEnd = endOfMonth(subMonths(new Date(), 1));
-      const thisMonthOrders = eligibleOrders.filter((o) => {
-        const d = new Date(o.created_at);
+      const thisMonthOrders = (orders || []).filter((o) => {
+        const createdAt = getOrderCreatedAt(o);
+        if (!createdAt) return false;
+        const d = new Date(createdAt);
         return d >= thisMonthStart && d <= thisMonthEnd;
       });
-      const lastMonthOrders = eligibleOrders.filter((o) => {
-        const d = new Date(o.created_at);
+      const lastMonthOrders = (orders || []).filter((o) => {
+        const createdAt = getOrderCreatedAt(o);
+        if (!createdAt) return false;
+        const d = new Date(createdAt);
         return d >= lastMonthStart && d <= lastMonthEnd;
       });
-      const thisMonthRevenue = thisMonthOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
-      const lastMonthRevenue = lastMonthOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+      const thisMonthRevenueOrders = thisMonthOrders.filter((o) => isCompletedOrderStatus(o.status));
+      const lastMonthRevenueOrders = lastMonthOrders.filter((o) => isCompletedOrderStatus(o.status));
+      const thisMonthRevenue = thisMonthRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
+      const lastMonthRevenue = lastMonthRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
 
       // Build engagement heatmap: 7 days x 24 hours
       const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -211,20 +246,22 @@ export const useAnalytics = (days: number = 30) => {
         })),
       }));
 
-      eligibleOrders.forEach((order) => {
-        const date = new Date(order.created_at);
+      revenueOrders.forEach((order) => {
+        const createdAt = getOrderCreatedAt(order);
+        if (!createdAt) return;
+        const date = new Date(createdAt);
         const dIndex = date.getDay();
         const hour = date.getHours();
         const bucket = heatmap[dIndex]?.hours[hour];
         if (bucket) {
           bucket.orders += 1;
-          bucket.revenue += Number(order.total_amount) || 0;
+          bucket.revenue += getOrderAmount(order);
         }
       });
 
       // Simple conversion funnel (orders placed -> completed)
-      const totalOrders = eligibleOrders.length;
-      const completedOrders = eligibleOrders.filter((o) => o.status === 'completed').length;
+      const totalOrders = orders?.length || 0;
+      const completedOrders = revenueOrders.length;
       const conversionFunnel =
         totalOrders === 0
           ? [
@@ -247,12 +284,20 @@ export const useAnalytics = (days: number = 30) => {
         Math.min(100, Math.round(completionScore + growthScore)),
       );
 
+      const totalRevenue = revenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
+      const averageOrderValue = revenueOrders.length ? totalRevenue / revenueOrders.length : 0;
+      const thisWeekAov = thisWeekRevenueOrders.length ? thisWeekRevenue / thisWeekRevenueOrders.length : 0;
+      const lastWeekAov = lastWeekRevenueOrders.length ? lastWeekRevenue / lastWeekRevenueOrders.length : 0;
+      const todayAov = todayRevenueOrders.length ? todayRevenue / todayRevenueOrders.length : 0;
+      const yesterdayAov = yesterdayRevenueOrders.length ? yesterdayRevenue / yesterdayRevenueOrders.length : 0;
+      const thisMonthAov = thisMonthRevenueOrders.length ? thisMonthRevenue / thisMonthRevenueOrders.length : 0;
+      const lastMonthAov = lastMonthRevenueOrders.length ? lastMonthRevenue / lastMonthRevenueOrders.length : 0;
+
       return {
-        totalRevenue: eligibleOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
+        totalRevenue,
         totalOrders,
-        averageOrderValue: eligibleOrders.length 
-          ? (eligibleOrders.reduce((sum, o) => sum + Number(o.total_amount), 0) / eligibleOrders.length)
-          : 0,
+        completedOrders,
+        averageOrderValue,
         salesByDay,
         salesByMonth,
         peakHours: Object.entries(ordersByHour || {})
@@ -262,10 +307,10 @@ export const useAnalytics = (days: number = 30) => {
           }))
           .sort((a, b) => b.orders - a.orders)
           .slice(0, 5),
-        topProducts: Object.values(productStats || {})
+        topProducts: (Object.values(productStats || {}) as any[])
           .sort((a: any, b: any) => b.revenue - a.revenue)
           .slice(0, 10),
-        categoryPerformance: Object.values(categoryStats || {}),
+        categoryPerformance: Object.values(categoryStats || {}) as any[],
         statusDistribution: Object.entries(statusDistribution || {}).map(([status, count]) => ({
           status,
           count,
@@ -274,10 +319,14 @@ export const useAnalytics = (days: number = 30) => {
           thisWeek: {
             revenue: thisWeekRevenue,
             orders: thisWeekOrders.length,
+            completedOrders: thisWeekRevenueOrders.length,
+            averageOrderValue: thisWeekAov,
           },
           lastWeek: {
             revenue: lastWeekRevenue,
             orders: lastWeekOrders.length,
+            completedOrders: lastWeekRevenueOrders.length,
+            averageOrderValue: lastWeekAov,
           },
           revenueGrowth: lastWeekRevenue > 0 
             ? ((thisWeekRevenue - lastWeekRevenue) / lastWeekRevenue) * 100 
@@ -287,8 +336,18 @@ export const useAnalytics = (days: number = 30) => {
             : 0,
         },
         dayComparison: {
-          today: { revenue: todayRevenue, orders: todayOrders.length },
-          yesterday: { revenue: yesterdayRevenue, orders: yesterdayOrders.length },
+          today: {
+            revenue: todayRevenue,
+            orders: todayOrders.length,
+            completedOrders: todayRevenueOrders.length,
+            averageOrderValue: todayAov,
+          },
+          yesterday: {
+            revenue: yesterdayRevenue,
+            orders: yesterdayOrders.length,
+            completedOrders: yesterdayRevenueOrders.length,
+            averageOrderValue: yesterdayAov,
+          },
           revenueGrowth: yesterdayRevenue > 0 
             ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 
             : (todayRevenue > 0 ? 100 : 0),
@@ -297,8 +356,18 @@ export const useAnalytics = (days: number = 30) => {
             : (todayOrders.length > 0 ? 100 : 0),
         },
         monthComparison: {
-          thisMonth: { revenue: thisMonthRevenue, orders: thisMonthOrders.length },
-          lastMonth: { revenue: lastMonthRevenue, orders: lastMonthOrders.length },
+          thisMonth: {
+            revenue: thisMonthRevenue,
+            orders: thisMonthOrders.length,
+            completedOrders: thisMonthRevenueOrders.length,
+            averageOrderValue: thisMonthAov,
+          },
+          lastMonth: {
+            revenue: lastMonthRevenue,
+            orders: lastMonthOrders.length,
+            completedOrders: lastMonthRevenueOrders.length,
+            averageOrderValue: lastMonthAov,
+          },
           revenueGrowth: lastMonthRevenue > 0 
             ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100 
             : (thisMonthRevenue > 0 ? 100 : 0),
@@ -309,6 +378,31 @@ export const useAnalytics = (days: number = 30) => {
         heatmap,
         conversionFunnel,
         performanceScore,
+        anomaly: null,
+        trendSummary: null,
+        segmentAnalytics: {
+          devices: [],
+          regions: [],
+          categories: [],
+        },
+        radarMetrics: [],
+        todayVsYesterday: {
+          revenue: {
+            today: todayRevenue,
+            yesterday: yesterdayRevenue,
+            delta: yesterdayRevenue > 0 ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : (todayRevenue > 0 ? 100 : 0),
+          },
+          orders: {
+            today: todayOrders.length,
+            yesterday: yesterdayOrders.length,
+            delta: yesterdayOrders.length > 0 ? ((todayOrders.length - yesterdayOrders.length) / yesterdayOrders.length) * 100 : (todayOrders.length > 0 ? 100 : 0),
+          },
+          aov: {
+            today: todayAov,
+            yesterday: yesterdayAov,
+            delta: yesterdayAov > 0 ? ((todayAov - yesterdayAov) / yesterdayAov) * 100 : (todayAov > 0 ? 100 : 0),
+          },
+        },
       };
     },
     enabled: !!vendor?.id,
@@ -320,6 +414,7 @@ function getEmptyAnalytics() {
   return {
     totalRevenue: 0,
     totalOrders: 0,
+    completedOrders: 0,
     averageOrderValue: 0,
     salesByDay: [],
     salesByMonth: [],
@@ -328,26 +423,39 @@ function getEmptyAnalytics() {
     categoryPerformance: [],
     statusDistribution: [],
     weeklyComparison: {
-      thisWeek: { revenue: 0, orders: 0 },
-      lastWeek: { revenue: 0, orders: 0 },
+      thisWeek: { revenue: 0, orders: 0, completedOrders: 0, averageOrderValue: 0 },
+      lastWeek: { revenue: 0, orders: 0, completedOrders: 0, averageOrderValue: 0 },
       revenueGrowth: 0,
       orderGrowth: 0,
     },
     dayComparison: {
-      today: { revenue: 0, orders: 0 },
-      yesterday: { revenue: 0, orders: 0 },
+      today: { revenue: 0, orders: 0, completedOrders: 0, averageOrderValue: 0 },
+      yesterday: { revenue: 0, orders: 0, completedOrders: 0, averageOrderValue: 0 },
       revenueGrowth: 0,
       orderGrowth: 0,
     },
     monthComparison: {
-      thisMonth: { revenue: 0, orders: 0 },
-      lastMonth: { revenue: 0, orders: 0 },
+      thisMonth: { revenue: 0, orders: 0, completedOrders: 0, averageOrderValue: 0 },
+      lastMonth: { revenue: 0, orders: 0, completedOrders: 0, averageOrderValue: 0 },
       revenueGrowth: 0,
       orderGrowth: 0,
     },
     heatmap: [],
     conversionFunnel: [],
     performanceScore: 0,
+    anomaly: null,
+    trendSummary: null,
+    segmentAnalytics: {
+      devices: [],
+      regions: [],
+      categories: [],
+    },
+    radarMetrics: [],
+    todayVsYesterday: {
+      revenue: { today: 0, yesterday: 0, delta: 0 },
+      orders: { today: 0, yesterday: 0, delta: 0 },
+      aov: { today: 0, yesterday: 0, delta: 0 },
+    },
   };
 }
 

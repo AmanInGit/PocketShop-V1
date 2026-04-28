@@ -37,6 +37,12 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/constants/routes";
+import {
+  getInventoryValue,
+  isProductAvailable,
+  isProductLowStock,
+  isProductOutOfStock,
+} from "@/features/vendor/utils/metrics";
 
 const DAILY_RESET_KEY = "pocketshop_vendor_daily_reset_date";
 
@@ -84,27 +90,13 @@ export default function Inventory() {
     if (!products) return null;
 
     const totalProducts = products.length;
-    const lowStockProducts = products.filter((p: any) => {
-      if (p.availability_mode === 'requirement') return false;
-      const threshold = p.low_stock_threshold ?? 10;
-      return (p.stock_quantity ?? 0) <= threshold && (p.stock_quantity ?? 0) > 0;
-    }).length;
-    const outOfStockProducts = products.filter((p: any) => {
-      if (p.availability_mode === 'requirement') {
-        return !p.is_available;
-      }
-      return (p.stock_quantity ?? 0) <= 0;
-    }).length;
+    const lowStockProducts = products.filter((p: any) => isProductLowStock(p)).length;
+    const outOfStockProducts = products.filter((p: any) => isProductOutOfStock(p)).length;
     const totalValue = products.reduce(
-      (sum: number, p: any) => sum + (p.price * p.stock_quantity),
+      (sum: number, p: any) => sum + getInventoryValue(p),
       0
     );
-    const availableProducts = products.filter((p: any) => {
-      if (p.availability_mode === 'requirement') {
-        return p.is_available;
-      }
-      return (p.stock_quantity ?? 0) > 0;
-    }).length;
+    const availableProducts = products.filter((p: any) => isProductAvailable(p)).length;
 
     return {
       totalProducts,
@@ -133,21 +125,16 @@ export default function Inventory() {
     const matchesCategory =
       selectedCategory === "all" || product.category === selectedCategory;
     
-    const isLowStock = product.availability_mode !== 'requirement' &&
-      (product.stock_quantity ?? 0) <= (product.low_stock_threshold || 10);
+    const isLowStock = isProductLowStock(product);
     
     switch (filterStatus) {
       case "available":
         return matchesSearch && matchesCategory && (
-          product.availability_mode === 'requirement'
-            ? product.is_available
-            : (product.stock_quantity ?? 0) > 0
+          isProductAvailable(product)
         );
       case "unavailable":
         return matchesSearch && matchesCategory && (
-          product.availability_mode === 'requirement'
-            ? !product.is_available
-            : (product.stock_quantity ?? 0) <= 0
+          isProductOutOfStock(product)
         );
       case "low-stock":
         return matchesSearch && matchesCategory && isLowStock;
@@ -156,10 +143,7 @@ export default function Inventory() {
     }
   });
 
-  const lowStockCount = products?.filter((p: any) =>
-    p.availability_mode !== 'requirement' &&
-    (p.stock_quantity ?? 0) <= (p.low_stock_threshold || 10)
-  ).length || 0;
+  const lowStockCount = products?.filter((p: any) => isProductLowStock(p)).length || 0;
 
   return (
     <div className="space-y-6 animate-fade-in">

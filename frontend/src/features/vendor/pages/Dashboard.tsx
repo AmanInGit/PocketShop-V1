@@ -73,6 +73,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  isActiveOrderStatus,
+  needsProductRestock,
+  normalizeOrderStatus,
+} from '@/features/vendor/utils/metrics';
 
 const CHART_COLORS = {
   revenue: 'hsl(221, 83%, 40%)',
@@ -204,11 +209,8 @@ export default function Dashboard() {
 
   const totalRevenue = rangeData.revenue;
   const totalOrders = rangeData.orders;
-  const lowStockProducts =
-    products?.filter((p: any) =>
-      p.availability_mode !== 'requirement' &&
-      (p.stock_quantity ?? 0) <= (p.low_stock_threshold ?? 10)
-    ).length || 0;
+  const stockAttentionProducts =
+    products?.filter((product: any) => needsProductRestock(product)).length || 0;
 
   const recentOrders = useMemo(() => (liveOrders || []).slice(0, 5), [liveOrders]);
   const pendingLiveOrders = useMemo(
@@ -232,12 +234,12 @@ export default function Dashboard() {
     return list.filter((o: any) => new Date(o.created_at) >= monthStart);
   })();
 
-  const pendingOrders = ordersForStatus.filter((o: any) => o.status === 'pending').length;
-  const processingOrders = ordersForStatus.filter((o: any) => o.status === 'processing').length;
-  const readyOrders = ordersForStatus.filter((o: any) => o.status === 'ready').length;
-  const completedOrders = ordersForStatus.filter((o: any) => o.status === 'completed').length;
-  const cancelledOrders = ordersForStatus.filter((o: any) => o.status === 'cancelled').length;
-  const pendingOrdersAll = (orders || []).filter((o: any) => o.status === 'pending').length;
+  const pendingOrders = ordersForStatus.filter((o: any) => normalizeOrderStatus(o.status) === 'NEW').length;
+  const processingOrders = ordersForStatus.filter((o: any) => normalizeOrderStatus(o.status) === 'IN_PROGRESS').length;
+  const readyOrders = ordersForStatus.filter((o: any) => normalizeOrderStatus(o.status) === 'READY').length;
+  const completedOrders = ordersForStatus.filter((o: any) => normalizeOrderStatus(o.status) === 'COMPLETED').length;
+  const cancelledOrders = ordersForStatus.filter((o: any) => normalizeOrderStatus(o.status) === 'CANCELLED').length;
+  const activeOrdersAll = (orders || []).filter((o: any) => isActiveOrderStatus(o.status)).length;
 
   const statusData = [
     { name: 'Completed', value: completedOrders, color: CHART_COLORS.orders },
@@ -250,7 +252,12 @@ export default function Dashboard() {
   const revenueGrowth = rangeData.growth.revenue;
   const orderGrowth = rangeData.growth.orders;
   const comparisonLabel = rangeData.label;
-  const averageOrderValue = rangeData.orders > 0 ? rangeData.revenue / rangeData.orders : (analytics?.averageOrderValue || 0);
+  const averageOrderValue =
+    metricRange === 'day'
+      ? (analytics?.dayComparison?.today?.averageOrderValue || 0)
+      : metricRange === 'month'
+        ? (analytics?.monthComparison?.thisMonth?.averageOrderValue || 0)
+        : (analytics?.weeklyComparison?.thisWeek?.averageOrderValue || 0);
   const allTopProducts = analytics?.topProducts || [];
   const topProducts = allTopProducts.slice(0, 5);
   const restProducts = allTopProducts.slice(5);
@@ -444,7 +451,7 @@ export default function Dashboard() {
                     {Math.abs(orderGrowth).toFixed(1)}%
                   </Badge>
                   <span className="text-muted-foreground">
-                    {metricRange === 'day' ? 'today' : metricRange === 'week' ? `${pendingOrdersAll} pending` : 'this month'}
+                    {metricRange === 'day' ? 'today' : metricRange === 'week' ? `${activeOrdersAll} active` : 'this month'}
                   </span>
                 </div>
               </>
@@ -483,7 +490,7 @@ export default function Dashboard() {
         <Card
           className={cn(
             'h-full min-h-[180px] relative overflow-hidden border-2 transition-all duration-300 group hover:shadow-lg flex flex-col',
-            lowStockProducts > 0
+            stockAttentionProducts > 0
               ? 'hover:border-destructive/50 border-destructive/20 bg-gradient-to-br from-destructive/5 to-card'
               : 'hover:border-accent/50 border-accent/20 bg-gradient-to-br from-accent/5 to-card',
           )}
@@ -491,13 +498,13 @@ export default function Dashboard() {
           <div
             className={cn(
               'absolute inset-0 bg-gradient-to-br to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300',
-              lowStockProducts > 0 ? 'from-destructive/10 via-destructive/5' : 'from-accent/10 via-accent/5',
+              stockAttentionProducts > 0 ? 'from-destructive/10 via-destructive/5' : 'from-accent/10 via-accent/5',
             )}
           />
           <div
             className={cn(
               'absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r to-transparent opacity-50 group-hover:opacity-100 transition-opacity',
-              lowStockProducts > 0 ? 'from-destructive via-destructive/50' : 'from-accent via-accent/50',
+              stockAttentionProducts > 0 ? 'from-destructive via-destructive/50' : 'from-accent via-accent/50',
             )}
           />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -505,12 +512,12 @@ export default function Dashboard() {
             <div
               className={cn(
                 'h-10 w-10 rounded-full flex items-center justify-center transition-colors',
-                lowStockProducts > 0
+                stockAttentionProducts > 0
                   ? 'bg-destructive/10 group-hover:bg-destructive/20'
                   : 'bg-accent/10 group-hover:bg-accent/20',
               )}
             >
-              {lowStockProducts > 0 ? (
+              {stockAttentionProducts > 0 ? (
                 <AlertCircle className="h-5 w-5 text-destructive" />
               ) : (
                 <Package className="h-5 w-5 text-accent" />
@@ -525,9 +532,9 @@ export default function Dashboard() {
               </>
             ) : (
               <>
-                <div className="text-3xl font-bold mb-2">{lowStockProducts}</div>
+                <div className="text-3xl font-bold mb-2">{stockAttentionProducts}</div>
                 <p className="text-xs text-muted-foreground">
-                  {lowStockProducts > 0 ? 'Products need restocking' : 'All products stocked'}
+                  {stockAttentionProducts > 0 ? 'Products need restocking' : 'All products stocked'}
                 </p>
                 <p className="text-xs text-muted-foreground/80 mt-1 flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
@@ -668,7 +675,7 @@ export default function Dashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${(Number(percent || 0) * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -850,7 +857,7 @@ export default function Dashboard() {
                             cy="50%"
                             outerRadius={80}
                             dataKey="value"
-                            label={({ name, percent }) => `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`}
+                            label={({ name, percent }) => `${name} ${(Number(percent || 0) * 100).toFixed(0)}%`}
                           >
                             {topProductsPieData.map((entry, i) => (
                               <Cell key={i} fill={entry.color} />
@@ -968,7 +975,7 @@ export default function Dashboard() {
                             cy="50%"
                             outerRadius={80}
                             dataKey="value"
-                            label={({ name, percent }) => `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`}
+                            label={({ name, percent }) => `${name} ${(Number(percent || 0) * 100).toFixed(0)}%`}
                           >
                             {topCategoriesPieData.map((entry, i) => (
                               <Cell key={i} fill={entry.color} />
@@ -1259,15 +1266,15 @@ export default function Dashboard() {
         </Dialog>
       </div>
 
-      {/* Low Stock Alert */}
-      {lowStockProducts > 0 && (
+      {/* Stock Alert */}
+      {stockAttentionProducts > 0 && (
         <Card className="border-2 border-destructive/20 bg-gradient-to-br from-[hsl(48,96%,53%)]/10 via-destructive/5 to-destructive/10">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-destructive" />
-              Low Stock Alert
+              Stock Alert
             </CardTitle>
-            <CardDescription>Products that need immediate restocking</CardDescription>
+            <CardDescription>Products that need immediate stock attention</CardDescription>
           </CardHeader>
           <CardContent>
             {productsLoading ? (
@@ -1279,10 +1286,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {products
-                  ?.filter((p: any) =>
-                    p.availability_mode !== 'requirement' &&
-                    (p.stock_quantity ?? 0) <= (p.low_stock_threshold ?? 10)
-                  )
+                  ?.filter((p: any) => needsProductRestock(p))
                   .slice(0, 5)
                   .map((product: any) => {
                     const threshold = product.low_stock_threshold ?? 10;
@@ -1334,13 +1338,13 @@ export default function Dashboard() {
                       </div>
                     );
                   })}
-                {lowStockProducts > 5 && (
+                {stockAttentionProducts > 5 && (
                   <Button
                     variant="outline"
                     className="w-full"
                     onClick={() => navigate('/vendor/dashboard/inventory')}
                   >
-                    View All {lowStockProducts} Low Stock Products
+                    View All {stockAttentionProducts} Products Needing Restock
                   </Button>
                 )}
               </div>

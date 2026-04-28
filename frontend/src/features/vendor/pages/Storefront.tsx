@@ -65,6 +65,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { LucideIcon } from "lucide-react";
+import {
+  getOrderAmount,
+  isActiveOrderStatus,
+  isCompletedOrderStatus,
+  isProductAvailable,
+} from "@/features/vendor/utils/metrics";
 
 const STAT_CARD_STYLES = {
   blue: {
@@ -192,22 +198,14 @@ export default function Storefront() {
   // Calculate statistics (mirrors Migration_Data Storefront behavior).
   const stats = useMemo(() => {
     const totalProducts = products?.length || 0;
-    const availableProducts =
-      products?.filter(
-        (p: any) =>
-          p.is_available && (p.stock_quantity === null || p.stock_quantity > 0),
-      ).length || 0;
+    const availableProducts = products?.filter((p: any) => isProductAvailable(p)).length || 0;
     const totalOrders = orders?.length || 0;
     const totalRevenue =
-      orders?.reduce(
-        (sum: number, order: any) =>
-          sum + (Number(order.total_amount) || 0),
+      orders?.filter((order: any) => isCompletedOrderStatus(order.status)).reduce(
+        (sum: number, order: any) => sum + getOrderAmount(order),
         0,
       ) || 0;
-    const pendingOrders =
-      orders?.filter((o: any) =>
-        ["pending", "processing", "preparing"].includes(String(o.status || '').toLowerCase()),
-      ).length || 0;
+    const pendingOrders = orders?.filter((o: any) => isActiveOrderStatus(o.status)).length || 0;
 
     return {
       totalProducts,

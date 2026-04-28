@@ -20,7 +20,7 @@
  * Theme will be handled at the app level after migration.
  */
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { AnalyticsCard } from "@/components/analytics/AnalyticsCard";
 import { ChartContainer } from "@/components/analytics/ChartContainer";
 import { ChartPopup } from "@/components/analytics/ChartPopup";
@@ -266,7 +266,6 @@ export default function Analytics() {
     data: insights,
     isLoading: insightsLoading,
   } = useAIInsights();
-  const analyticsData: any = analytics;
 
   const [realTimeMetrics, setRealTimeMetrics] = useState({
     revenue: 0,
@@ -276,6 +275,22 @@ export default function Analytics() {
   const [liveOrdersTrend, setLiveOrdersTrend] = useState<
     Array<{ time: string; orders: number; revenue: number }>
   >([]);
+  const anomaly = analytics?.anomaly as
+    | {
+        isAnomaly?: boolean;
+        direction?: "up" | "down";
+        severity?: number;
+        displayDate?: string;
+      }
+    | null
+    | undefined;
+  const trendSummary = analytics?.trendSummary as
+    | {
+        summary?: string;
+      }
+    | null
+    | undefined;
+  const statusDistribution = analytics?.statusDistribution ?? [];
 
   useEffect(() => {
     // NOTE: In this frontend we avoid toggling the global document theme
@@ -301,16 +316,9 @@ export default function Analytics() {
       analytics.salesByDay
         ?.slice(-12)
         .map((item: any) => {
-          const baseOrders = Math.max(
-            Math.round(
-              item.amount /
-                Math.max(analytics.averageOrderValue || 1, 1)
-            ),
-            0
-          );
           return {
             time: item.label ?? item.date ?? "",
-            orders: baseOrders,
+            orders: Number(item.orders || 0),
             revenue: item.amount,
           };
         }) ?? [];
@@ -336,7 +344,7 @@ export default function Analytics() {
       key: "orders",
       title: "Total Orders",
       value: formatNumber(realTimeMetrics.orders || 0),
-      subtitle: "Completed across period",
+      subtitle: "Across selected period",
       delta: analytics?.weeklyComparison?.orderGrowth ?? 0,
       deltaLabel: "vs last week",
       trend: ((analytics?.weeklyComparison?.orderGrowth ?? 0) >= 0
@@ -353,9 +361,9 @@ export default function Analytics() {
         maximumFractionDigits: 2,
       }),
       subtitle: "Per successful order",
-      delta: analyticsData?.todayVsYesterday?.aov?.delta ?? 0,
+      delta: analytics?.todayVsYesterday?.aov?.delta ?? 0,
       deltaLabel: "vs yesterday",
-      trend: ((analyticsData?.todayVsYesterday?.aov?.delta ?? 0) >= 0
+      trend: ((analytics?.todayVsYesterday?.aov?.delta ?? 0) >= 0
         ? "up"
         : "down") as "up" | "down" | "neutral",
       icon: <TrendingUp className="h-5 w-5" />,
@@ -364,30 +372,30 @@ export default function Analytics() {
     },
     {
       key: "anomaly",
-      title: analyticsData?.anomaly?.isAnomaly
+      title: anomaly?.isAnomaly
         ? "Anomaly Detected"
         : "Stability Monitor",
-      value: analyticsData?.anomaly?.isAnomaly
-        ? `${analyticsData?.anomaly?.direction === "up" ? "+" : "-"}${(
-            analyticsData?.anomaly?.severity ?? 0
+      value: anomaly?.isAnomaly
+        ? `${anomaly?.direction === "up" ? "+" : "-"}${(
+            anomaly?.severity ?? 0
           ).toFixed(1)}σ`
         : "All clear",
-      subtitle: analyticsData?.anomaly?.isAnomaly
-        ? `Spike on ${analyticsData?.anomaly?.displayDate}`
+      subtitle: anomaly?.isAnomaly
+        ? `Spike on ${anomaly?.displayDate}`
         : "Within expected thresholds",
-      delta: analyticsData?.anomaly?.isAnomaly
-        ? analyticsData?.anomaly?.severity ?? 0
+      delta: anomaly?.isAnomaly
+        ? anomaly?.severity ?? 0
         : null,
-      deltaLabel: analyticsData?.anomaly?.isAnomaly ? "Deviation" : undefined,
-      trend: (analyticsData?.anomaly?.direction === "down"
+      deltaLabel: anomaly?.isAnomaly ? "Deviation" : undefined,
+      trend: (anomaly?.direction === "down"
         ? "down"
         : "up") as "up" | "down" | "neutral",
-      icon: analyticsData?.anomaly?.isAnomaly ? (
+      icon: anomaly?.isAnomaly ? (
         <AlertTriangle className="h-5 w-5 text-red-500" />
       ) : (
         <Activity className="h-5 w-5" />
       ),
-      tone: analyticsData?.anomaly?.isAnomaly
+      tone: anomaly?.isAnomaly
         ? ("info" as const)
         : ("neutral" as const),
       loading: analyticsLoading,
@@ -396,48 +404,48 @@ export default function Analytics() {
   ];
 
   const comparisonMetrics =
-    analyticsData?.todayVsYesterday
+    analytics?.todayVsYesterday
       ? [
           {
             label: "Revenue",
             today: formatCurrency(
-              analyticsData.todayVsYesterday.revenue?.today || 0,
+              analytics.todayVsYesterday.revenue?.today || 0,
               { maximumFractionDigits: 0 }
             ),
             yesterday: formatCurrency(
-              analyticsData.todayVsYesterday.revenue?.yesterday || 0,
+              analytics.todayVsYesterday.revenue?.yesterday || 0,
               { maximumFractionDigits: 0 }
             ),
-            delta: analyticsData.todayVsYesterday.revenue?.delta || 0,
+            delta: analytics.todayVsYesterday.revenue?.delta || 0,
           },
           {
             label: "Orders",
             today: formatNumber(
-              analyticsData.todayVsYesterday.orders?.today || 0
+              analytics.todayVsYesterday.orders?.today || 0
             ),
             yesterday: formatNumber(
-              analyticsData.todayVsYesterday.orders?.yesterday || 0
+              analytics.todayVsYesterday.orders?.yesterday || 0
             ),
-            delta: analyticsData.todayVsYesterday.orders?.delta || 0,
+            delta: analytics.todayVsYesterday.orders?.delta || 0,
           },
           {
             label: "Avg Order Value",
             today: formatCurrency(
-              analyticsData.todayVsYesterday.aov?.today || 0,
+              analytics.todayVsYesterday.aov?.today || 0,
               { maximumFractionDigits: 2 }
             ),
             yesterday: formatCurrency(
-              analyticsData.todayVsYesterday.aov?.yesterday || 0,
+              analytics.todayVsYesterday.aov?.yesterday || 0,
               { maximumFractionDigits: 2 }
             ),
-            delta: analyticsData.todayVsYesterday.aov?.delta || 0,
+            delta: analytics.todayVsYesterday.aov?.delta || 0,
           },
         ]
       : [];
 
-  const segmentDevices = analyticsData?.segmentAnalytics?.devices ?? [];
-  const segmentRegions = analyticsData?.segmentAnalytics?.regions ?? [];
-  const segmentCategories = analyticsData?.segmentAnalytics?.categories ?? [];
+  const segmentDevices = analytics?.segmentAnalytics?.devices ?? [];
+  const segmentRegions = analytics?.segmentAnalytics?.regions ?? [];
+  const segmentCategories = analytics?.segmentAnalytics?.categories ?? [];
 
   const openChart = (key: ChartKey) => setActiveChart(key);
 
@@ -603,7 +611,7 @@ export default function Analytics() {
           >
             <PieChart>
               <Pie
-                data={(analytics?.categoryPerformance || []) as any[]}
+                data={analytics?.categoryPerformance || []}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
@@ -750,7 +758,6 @@ export default function Analytics() {
                   fill="hsl(var(--foreground))"
                   stroke="none"
                   dataKey="stage"
-                  formatter={(value: React.ReactNode) => value}
                 />
               </Funnel>
             </FunnelChart>
@@ -789,7 +796,7 @@ export default function Analytics() {
           </ResponsiveContainer>
         );
       case "radar":
-        if (!analyticsData?.radarMetrics || !analyticsData.radarMetrics.length) {
+        if (!analytics?.radarMetrics || !analytics.radarMetrics.length) {
           return (
             <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
               Benchmark radar coming soon.
@@ -801,7 +808,7 @@ export default function Analytics() {
             width="100%"
             height={extended ? 420 : 300}
           >
-            <RadarChart data={analyticsData.radarMetrics}>
+            <RadarChart data={analytics.radarMetrics}>
               <PolarGrid />
               <PolarAngleAxis dataKey="metric" />
               <PolarRadiusAxis angle={30} domain={[0, 120]} />
@@ -896,9 +903,9 @@ export default function Analytics() {
                   Comparison Pulse
                 </h2>
               </div>
-              {analyticsData?.trendSummary?.summary && (
+              {trendSummary?.summary && (
                 <p className="text-sm text-muted-foreground/80">
-                  {analyticsData.trendSummary.summary}
+                  {trendSummary.summary}
                 </p>
               )}
             </div>
@@ -1253,7 +1260,7 @@ export default function Analytics() {
           </motion.div>
         )}
 
-        {(analyticsData?.statusDistribution?.length ?? 0) > 0 && (
+        {statusDistribution.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 32 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -1275,9 +1282,9 @@ export default function Analytics() {
               </div>
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              {analyticsData.statusDistribution.map(
+              {statusDistribution.map(
                 (status: any, index: number) => {
-                  const total = analyticsData.statusDistribution.reduce(
+                  const total = statusDistribution.reduce(
                     (sum: number, entry: any) => sum + entry.count,
                     0
                   );
