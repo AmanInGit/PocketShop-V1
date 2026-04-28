@@ -11,6 +11,10 @@
   overflow: hidden;
 }
 
+.vendor-auth:has(.register-success-modal) {
+  overflow: hidden;
+}
+
 .auth-container {
   max-width: 520px;
   margin: 0 auto;
@@ -398,6 +402,11 @@
   padding-right: 2.75rem;
 }
 
+.password-input .form-input::-ms-reveal,
+.password-input .form-input::-ms-clear {
+  display: none;
+}
+
 .password-toggle {
   position: absolute;
   right: 0.75rem;
@@ -736,5 +745,95 @@
 
 .step-back-link:hover:not(:disabled) {
   color: #ffffff;
+}
+
+.register-success-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.register-success-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.register-success-modal__content {
+  position: relative;
+  width: min(100%, 28rem);
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1.75rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  text-align: center;
+}
+
+.register-success-modal__icon {
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto 1rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.14), rgba(168, 85, 247, 0.18));
+  color: #db2777;
+}
+
+.register-success-modal__icon svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.register-success-modal__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.register-success-modal__text {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.72);
+  line-height: 1.6;
+}
+
+.register-success-modal__actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.register-success-modal__actions .submit-btn {
+  margin-top: 0;
+}
+
+.register-success-modal__primary,
+.register-success-modal__secondary {
+  flex: 1;
+}
+
+.register-success-modal__secondary {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: none;
+}
+
+.register-success-modal__secondary:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+@media (max-width: 768px) {
+  .register-success-modal__actions {
+    flex-direction: column;
+  }
 }
 

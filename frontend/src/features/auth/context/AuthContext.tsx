@@ -366,7 +366,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signUp = async (email: string, password: string, userData: { full_name: string; mobile_number?: string; role: 'vendor' | 'customer' }, options?: { emailRedirectTo?: string }) => {
     try {
-      setLoading(true);
       setError(null);
 
       const redirectTo = options?.emailRedirectTo ?? (userData.role === 'customer'
@@ -399,14 +398,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const errorMessage = 'An unexpected error occurred during signup';
       setError(errorMessage);
       return { data: null, error: { message: errorMessage } };
-    } finally {
-      setLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
-      setLoading(true);
       setError(null);
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -424,14 +420,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const errorMessage = 'An unexpected error occurred during signin';
       setError(errorMessage);
       return { data: null, error: { message: errorMessage } };
-    } finally {
-      setLoading(false);
     }
   };
 
   const signOut = async () => {
     try {
-      setLoading(true);
       setError(null);
 
       // Sign out from Supabase (this will clear the session and localStorage)
@@ -455,8 +448,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const errorMessage = 'An unexpected error occurred during signout';
       setError(errorMessage);
       return { error: { message: errorMessage } };
-    } finally {
-      setLoading(false);
     }
   };
 

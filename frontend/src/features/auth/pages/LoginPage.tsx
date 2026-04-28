@@ -8,7 +8,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { signInWithGoogle } from '@/features/auth/services/authService';
-import { RegisterConfirm } from '@/features/auth/components/RegisterConfirm';
 import { 
   ArrowLeft, 
   Eye, 
@@ -18,6 +17,7 @@ import {
   UserPlus,
   AlertCircle,
   Loader2,
+  Mail,
 } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { preloadDashboardOverview, preloadOnboardingStage } from '@/utils/preloaders';
@@ -136,10 +136,17 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string>('');
+  const [registerSuccessMessage, setRegisterSuccessMessage] = useState(
+    'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+  );
 
   const resetRegisterFlow = () => {
     setRegisterStep(1);
     setErrors({});
+    setEmailSent(false);
+    setRegisterSuccessMessage(
+      'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+    );
   };
 
   const validateRegisterForm = (): boolean => {
@@ -250,10 +257,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
       return;
     }
 
-    if (!validateRegisterForm()) {
-      return;
-    }
-
     setIsSubmitting(true);
     setErrors({});
     setEmailSent(false);
@@ -273,6 +276,18 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
 
       if (error) {
         console.error('[Register] Registration error:', error);
+        const errorMessage = String(error.message || '').toLowerCase();
+
+        if (errorMessage.includes('email rate limit exceeded')) {
+          setRegisteredEmail(registerFormData.email);
+          setRegisterSuccessMessage(
+            'A confirmation email was already sent recently. Please check your inbox and confirm your email before trying again.'
+          );
+          setEmailSent(true);
+          setIsSubmitting(false);
+          return;
+        }
+
         setErrors({ submit: error.message });
         setIsSubmitting(false);
         return;
@@ -296,6 +311,9 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
         if (isConfirmationPending) {
           // Email confirmation required - show confirmation UI
           setRegisteredEmail(registerFormData.email);
+          setRegisterSuccessMessage(
+            'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+          );
           setEmailSent(true);
           // Clear form data
           setRegisterFormData({
@@ -319,6 +337,9 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
         // No user data but no error - usually means confirmation email sent
         console.log('[Register] No user data, assuming email sent');
         setRegisteredEmail(registerFormData.email);
+        setRegisterSuccessMessage(
+          'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+        );
         setEmailSent(true);
         // Clear form data
         setRegisterFormData({
@@ -389,11 +410,6 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
 
   // Don't show full screen loading - only show on button if submitting
   // Allow user to see the form even while checking auth
-
-  // Show registration confirmation UI if email was sent
-  if (mode === 'register' && emailSent && registeredEmail) {
-    return <RegisterConfirm email={registeredEmail} />;
-  }
 
   const handleRegisterNextStep = () => {
     if (validateRegisterStep1()) {
@@ -508,6 +524,50 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                 {mode === 'login' && (
                   <div className="divider">
                     <span>or</span>
+                  </div>
+                )}
+
+                {mode === 'register' && emailSent && registeredEmail && (
+                  <div
+                    className="register-success-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="register-success-title"
+                  >
+                    <div className="register-success-modal__backdrop" onClick={() => setEmailSent(false)} />
+                    <div className="register-success-modal__content">
+                      <div className="register-success-modal__icon">
+                        <Mail />
+                      </div>
+                      <h2 id="register-success-title" className="register-success-modal__title">
+                        Confirmation Email Sent
+                      </h2>
+                      <p className="register-success-modal__text">
+                        {registerSuccessMessage} <strong>{registeredEmail}</strong>.
+                      </p>
+                      <div className="register-success-modal__actions">
+                        <button
+                          type="button"
+                          className="btn submit-btn register-success-modal__secondary"
+                          onClick={() => setEmailSent(false)}
+                        >
+                          Close
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary submit-btn register-success-modal__primary"
+                          onClick={() => {
+                            setEmailSent(false);
+                            setMode('login');
+                            navigate(ROUTES.LOGIN, {
+                              state: { message: 'confirm_email' },
+                            });
+                          }}
+                        >
+                          Go to Login
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
