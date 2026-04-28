@@ -10,6 +10,7 @@ import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/constants/routes';
+import { DEFAULT_SERVICE_CITY } from '@/features/common/constants/serviceCities';
 
 interface OnboardingData {
   // Stage 1: Restaurant Info
@@ -23,6 +24,7 @@ interface OnboardingData {
   state: string;
   postalCode: string;
   country: string;
+  operationalZone: string;
   operationalHours: Record<string, { open: string; close: string }>;
   workingDays: string[];
   // Stage 3: Plans
@@ -104,6 +106,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     state: '',
     postalCode: '',
     country: '',
+    operationalZone: DEFAULT_SERVICE_CITY,
     operationalHours: {},
     workingDays: [],
     selectedPlan: null,
@@ -159,6 +162,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             state: profile.state || prev.state,
             postalCode: profile.postal_code || prev.postalCode,
             country: profile.country || prev.country,
+            operationalZone: profile.metadata?.operational_zone || prev.operationalZone,
             workingDays: profile.working_days || prev.workingDays,
             operationalHours: profile.operational_hours || prev.operationalHours,
             selectedPlan: profile.metadata?.selected_plan || prev.selectedPlan,
@@ -352,6 +356,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       state: '',
       postalCode: '',
       country: '',
+      operationalZone: DEFAULT_SERVICE_CITY,
       operationalHours: {},
       workingDays: [],
       selectedPlan: null,

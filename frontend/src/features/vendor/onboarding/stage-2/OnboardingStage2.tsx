@@ -6,6 +6,7 @@ import { ROUTES } from '@/constants/routes';
 import { preloadNextOnboardingStage } from '@/utils/preloaders';
 import { InputField } from '@/features/common/components/shared/InputField';
 import { StageIndicator } from '@/features/common/components/shared/StageIndicator';
+import { SUPPORTED_SERVICE_CITIES } from '@/features/common/constants/serviceCities';
 
 const OnboardingStage2: React.FC = () => {
   const { data, updateData, completeStage, nextStage, previousStage } = useOnboarding();
@@ -22,6 +23,7 @@ const OnboardingStage2: React.FC = () => {
     if (!data.city) newErrors.city = 'City is required';
     if (!data.state) newErrors.state = 'State is required';
     if (!data.postalCode) newErrors.postalCode = 'Postal code is required';
+    if (!data.operationalZone) newErrors.operationalZone = 'Operational zone is required';
     if (data.workingDays.length === 0) newErrors.workingDays = 'Select at least one working day';
 
     if (Object.keys(newErrors).length > 0) {
@@ -42,6 +44,19 @@ const OnboardingStage2: React.FC = () => {
 
       // Step 1: Save stage 2 data to database
       console.log('[OnboardingStage2] Saving data to database...');
+      const { data: currentProfile, error: profileError } = await (supabase
+        .from('vendor_profiles' as any)
+        .select('metadata')
+        .eq('user_id', user.id)
+        .single()) as any;
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('[OnboardingStage2] Profile metadata fetch error:', profileError);
+        setErrors({ submit: `Failed to load profile data: ${profileError.message}. Please try again.` });
+        setIsLoading(false);
+        return;
+      }
+
       const { error: updateError, data: updateData } = await (supabase
         .from('vendor_profiles' as any)
         .update({
@@ -50,6 +65,10 @@ const OnboardingStage2: React.FC = () => {
           state: data.state,
           postal_code: data.postalCode,
           country: data.country || 'IN',
+          metadata: {
+            ...(currentProfile?.metadata || {}),
+            operational_zone: data.operationalZone,
+          },
           working_days: data.workingDays,
           operational_hours: data.operationalHours,
           onboarding_status: 'operational_details',
@@ -166,6 +185,31 @@ const OnboardingStage2: React.FC = () => {
                   value={data.country || 'India'}
                   onChange={(e) => updateData({ country: e.target.value })}
                 />
+              </div>
+
+              <div className="space-y-1.5 mt-4">
+                <label className="block text-xs font-semibold text-[#6B7280] uppercase tracking-wide">
+                  Operational Zone
+                </label>
+                <select
+                  className={`w-full px-5 py-3.5 rounded-lg border text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#5522E2]/25 focus:border-[#5522E2] transition-all ${
+                    errors.operationalZone
+                      ? 'border-[#E83935] focus:ring-[#E83935]/25 focus:border-[#E83935]'
+                      : 'border-[#E5E7EB]'
+                  }`}
+                  value={data.operationalZone}
+                  onChange={(e) => updateData({ operationalZone: e.target.value })}
+                >
+                  <option value="">Select operational zone</option>
+                  {SUPPORTED_SERVICE_CITIES.map((city) => (
+                    <option key={city.value} value={city.value}>
+                      {city.label}
+                    </option>
+                  ))}
+                </select>
+                {errors.operationalZone && (
+                  <p className="text-sm text-[#E83935] mt-1">{errors.operationalZone}</p>
+                )}
               </div>
             </div>
 

@@ -89,12 +89,22 @@ export default function Inventory() {
       const threshold = p.low_stock_threshold ?? 10;
       return (p.stock_quantity ?? 0) <= threshold && (p.stock_quantity ?? 0) > 0;
     }).length;
-    const outOfStockProducts = products.filter((p: any) => p.stock_quantity === 0).length;
+    const outOfStockProducts = products.filter((p: any) => {
+      if (p.availability_mode === 'requirement') {
+        return !p.is_available;
+      }
+      return (p.stock_quantity ?? 0) <= 0;
+    }).length;
     const totalValue = products.reduce(
       (sum: number, p: any) => sum + (p.price * p.stock_quantity),
       0
     );
-    const availableProducts = products.filter((p: any) => p.is_available).length;
+    const availableProducts = products.filter((p: any) => {
+      if (p.availability_mode === 'requirement') {
+        return p.is_available;
+      }
+      return (p.stock_quantity ?? 0) > 0;
+    }).length;
 
     return {
       totalProducts,
@@ -128,9 +138,17 @@ export default function Inventory() {
     
     switch (filterStatus) {
       case "available":
-        return matchesSearch && matchesCategory && product.is_available;
+        return matchesSearch && matchesCategory && (
+          product.availability_mode === 'requirement'
+            ? product.is_available
+            : (product.stock_quantity ?? 0) > 0
+        );
       case "unavailable":
-        return matchesSearch && matchesCategory && !product.is_available;
+        return matchesSearch && matchesCategory && (
+          product.availability_mode === 'requirement'
+            ? !product.is_available
+            : (product.stock_quantity ?? 0) <= 0
+        );
       case "low-stock":
         return matchesSearch && matchesCategory && isLowStock;
       default:

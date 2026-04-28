@@ -290,8 +290,10 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
       if (data?.user) {
         console.log('[Register] User created:', data.user.id, 'Email confirmed:', data.user.email_confirmed_at);
         
-        // Check if email confirmation is required
-        if (!data.user.email_confirmed_at) {
+        // Supabase returns a null session when email confirmation is pending.
+        // Treat that as a successful registration and show confirmation UI.
+        const isConfirmationPending = !data.session || !data.user.email_confirmed_at;
+        if (isConfirmationPending) {
           // Email confirmation required - show confirmation UI
           setRegisteredEmail(registerFormData.email);
           setEmailSent(true);

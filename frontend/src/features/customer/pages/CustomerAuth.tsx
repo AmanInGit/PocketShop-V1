@@ -83,16 +83,16 @@ export default function CustomerAuth() {
 
     const { data: existing } = await supabase
       .from('customer_profiles')
-      .select('id, name, phone')
+      .select('id, name, mobile_number')
       .eq('user_id', session.user.id)
       .maybeSingle();
 
     if (existing?.id) {
       // Keep profile phone aligned with verified OTP phone.
-      if (e164Phone && existing.phone !== e164Phone) {
+      if (e164Phone && existing.mobile_number !== e164Phone) {
         await supabase
           .from('customer_profiles')
-          .update({ phone: e164Phone, phone_verified: true })
+          .update({ mobile_number: e164Phone, phone_verified: true })
           .eq('id', existing.id);
       }
       return;
@@ -101,7 +101,7 @@ export default function CustomerAuth() {
     await supabase.from('customer_profiles').insert({
       user_id: session.user.id,
       name: formData.name.trim() || 'Customer',
-      phone: e164Phone,
+      mobile_number: e164Phone,
       email: session.user.email || null,
       phone_verified: true,
     });

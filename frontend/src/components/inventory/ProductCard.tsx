@@ -39,6 +39,7 @@ interface ProductCardProps {
 
 export const ProductCard = ({ product, onDelete, onToggleAvailability, variant = "grid" }: ProductCardProps) => {
   const isRequirementBased = product.availability_mode === "requirement";
+  const isAvailable = isRequirementBased ? product.is_available : (product.stock_quantity ?? 0) > 0;
   const isLowStock = !isRequirementBased &&
     (product.stock_quantity ?? 0) <= (product.low_stock_threshold || 10);
 
@@ -83,12 +84,12 @@ export const ProductCard = ({ product, onDelete, onToggleAvailability, variant =
             {isRequirementBased ? (
               <div className="flex items-center gap-2">
                 <Switch
-                  checked={product.is_available}
+                  checked={isAvailable}
                   onCheckedChange={(v) => onToggleAvailability?.(product.id, v)}
                   disabled={!onToggleAvailability}
                 />
                 <span className="text-xs text-muted-foreground">
-                  {product.is_available ? "In stock" : "Out of stock"}
+                  {isAvailable ? "In stock" : "Out of stock"}
                 </span>
               </div>
             ) : (
@@ -104,7 +105,7 @@ export const ProductCard = ({ product, onDelete, onToggleAvailability, variant =
                 Low Stock
               </Badge>
             )}
-            {!product.is_available && (
+            {!isAvailable && (
               <Badge variant="secondary" className="text-xs">
                 Unavailable
               </Badge>
@@ -191,7 +192,7 @@ export const ProductCard = ({ product, onDelete, onToggleAvailability, variant =
             Low Stock
           </Badge>
         )}
-        {!product.is_available && (
+        {!isAvailable && (
           <Badge variant="secondary" className="absolute top-2 left-2">
             Unavailable
           </Badge>
@@ -218,12 +219,12 @@ export const ProductCard = ({ product, onDelete, onToggleAvailability, variant =
           {isRequirementBased ? (
             <div className="flex items-center gap-2">
               <Switch
-                checked={product.is_available}
+                checked={isAvailable}
                 onCheckedChange={(v) => onToggleAvailability?.(product.id, v)}
                 disabled={!onToggleAvailability}
               />
               <span className="text-xs font-medium text-muted-foreground">
-                {product.is_available ? "In stock" : "Out of stock"}
+                {isAvailable ? "In stock" : "Out of stock"}
               </span>
             </div>
           ) : (
