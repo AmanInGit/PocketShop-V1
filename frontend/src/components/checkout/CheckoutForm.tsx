@@ -169,7 +169,7 @@ export function CheckoutForm({
       await handlePaymentMethodSelect(data, method);
     });
 
-  const onSubmit = (_data: CheckoutFormData) => {
+  const onSubmit = () => {
     // This will be triggered when any payment method is clicked
     // since the form wraps the payment buttons
   };
@@ -431,10 +431,11 @@ export function CheckoutForm({
               variant={selectedPaymentMethod === 'upi' ? 'default' : 'outline'}
               className="h-auto py-4 flex flex-col gap-2"
               onClick={confirmAndPay('upi')}
-              disabled={isProcessing}
+              disabled
             >
               <Smartphone className="h-6 w-6" />
               <span>UPI</span>
+              <span className="text-xs text-muted-foreground">Coming soon</span>
             </Button>
 
             <Button
@@ -442,10 +443,11 @@ export function CheckoutForm({
               variant={selectedPaymentMethod === 'wallet' ? 'default' : 'outline'}
               className="h-auto py-4 flex flex-col gap-2"
               onClick={confirmAndPay('wallet')}
-              disabled={isProcessing}
+              disabled
             >
               <Wallet className="h-6 w-6" />
               <span>Wallet</span>
+              <span className="text-xs text-muted-foreground">Coming soon</span>
             </Button>
 
             <Button

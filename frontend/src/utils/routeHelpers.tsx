@@ -4,7 +4,7 @@
  * Utility functions for generating routes from configuration.
  */
 
-import { Suspense, lazy, ComponentType } from 'react';
+import { Suspense, ComponentType } from 'react';
 import { Route, Navigate } from 'react-router-dom';
 import type { RouteConfig } from '@/routes/types';
 import { ROUTES } from '@/constants/routes';
@@ -35,6 +35,10 @@ export const generateRoute = (config: RouteConfig): JSX.Element => {
   // Handle redirect routes
   if (redirect) {
     return <Route key={path} path={path} element={<Navigate to={redirect} replace={replace} />} />;
+  }
+
+  if (!Component) {
+    throw new Error(`Route config for "${path}" is missing a component`);
   }
 
   // Wrap component with layout if provided

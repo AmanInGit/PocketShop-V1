@@ -15,13 +15,19 @@ export function PaymentStatusButton({ orderId, paymentStatus, amount }: PaymentS
 
   const markAsPaidMutation = useMutation({
     mutationFn: async () => {
-      // Update payment status to completed
-      const { error } = await supabase
+      const { error: paymentError } = await supabase
         .from('payments')
         .update({ payment_status: 'completed' })
         .eq('order_id', orderId);
 
-      if (error) throw error;
+      if (paymentError) throw paymentError;
+
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({ payment_status: 'paid' })
+        .eq('id', orderId);
+
+      if (orderError) throw orderError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });

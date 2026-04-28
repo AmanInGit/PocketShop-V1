@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-// Phone number regex for Indian phone numbers (supports +91, 91, or without country code)
-const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
-
 export const checkoutFormSchema = z.object({
   name: z
     .string()

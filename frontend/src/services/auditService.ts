@@ -28,14 +28,14 @@ async function getActorId(): Promise<string> {
 export async function logAuditEntry(input: LogAuditEntryInput): Promise<void> {
   const actorId = await getActorId();
   try {
-    const { error } = await supabase.from('audit_logs').insert({
+    const { error } = await (supabase.from('audit_logs' as any).insert({
       entity_table: input.entityTable,
       entity_id: input.entityId,
       action_type: input.actionType,
       actor_id: actorId,
       state_before: input.stateBefore,
       state_after: input.stateAfter,
-    });
+    }) as Promise<{ error: { message: string } | null }>);
 
     if (error) {
       // Keep business operations non-blocking if audit table is unavailable.

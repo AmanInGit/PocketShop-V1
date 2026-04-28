@@ -7,7 +7,7 @@
  * Note: Database queries will be adapted in Phase 3/4.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
@@ -232,8 +232,8 @@ export default function OrderDetail() {
         </CardContent>
       </Card>
 
-      {showReceipt && (
-        <OrderReceipt order={order} payment={payment} />
+      {showReceipt && vendor && (
+        <OrderReceipt order={order} vendor={vendor} payment={payment} />
       )}
 
       <div className="grid gap-4 lg:grid-cols-[1.9fr_1fr]">
@@ -254,10 +254,10 @@ export default function OrderDetail() {
                     </tr>
                   </thead>
                   <tbody>
-                    {order.order_items?.map((item: any) => (
-                      <tr key={item.id} className="border-t">
+                    {(Array.isArray(order.items) ? order.items : []).map((item: any, index: number) => (
+                      <tr key={item.id ?? `${item.product_id ?? 'item'}-${index}`} className="border-t">
                         <td className="px-3 py-2">
-                          <p className="font-medium leading-tight">{item.products?.name || 'Product'}</p>
+                          <p className="font-medium leading-tight">{item.name || item.products?.name || 'Product'}</p>
                         </td>
                         <td className="px-3 py-2 text-right">{item.quantity}</td>
                         <td className="px-3 py-2 text-right">₹{Number(item.unit_price).toLocaleString()}</td>
@@ -388,7 +388,7 @@ export default function OrderDetail() {
               <details className="rounded-md border p-3">
                 <summary className="cursor-pointer text-sm font-medium">Messages</summary>
                 <div className="pt-3">
-                  <OrderMessaging orderId={order.id} vendorId={vendor?.id} />
+                  <OrderMessaging orderId={order.id} />
                 </div>
               </details>
               <details className="rounded-md border p-3">

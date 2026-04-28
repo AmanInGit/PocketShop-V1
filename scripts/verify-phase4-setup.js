@@ -171,12 +171,11 @@ async function verifyMigration() {
   } else {
     console.log('⚠️  Some checks failed. Migration may not be complete.');
     console.log('\n💡 To complete the migration:');
-    console.log('1. Go to Supabase Dashboard: https://supabase.com/dashboard/project/ovfcyvyavpzkijyfhezp');
+    console.log('1. Open your Supabase project dashboard');
     console.log('2. Navigate to SQL Editor → New Query');
-    console.log('3. Run docs/database/PHASE4_MIGRATION.sql');
+    console.log('3. Run docs/database/migrations/phase4-migration.sql');
     console.log('\n📚 For detailed instructions, see:');
-    console.log('   docs/database/PHASE4_EXECUTION_GUIDE.md');
-    console.log('   PHASE4_START.md');
+    console.log('   docs/database/database-overview.md');
   }
   console.log('='.repeat(60) + '\n');
 

@@ -71,8 +71,8 @@ serve(async (req) => {
     }
 
     const unitAmount = Math.round(amount * 100);
-    const successUrl = `${frontendUrl}/payment-success?orderId=${encodeURIComponent(order.id)}`;
-    const cancelUrl = `${frontendUrl}/payment-cancel?orderId=${encodeURIComponent(order.id)}`;
+    const successUrl = `${frontendUrl}/payment-success?orderId=${encodeURIComponent(order.id)}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${frontendUrl}/payment-cancel?orderId=${encodeURIComponent(order.id)}&session_id={CHECKOUT_SESSION_ID}`;
 
     const formData = new URLSearchParams();
     formData.append("mode", "payment");

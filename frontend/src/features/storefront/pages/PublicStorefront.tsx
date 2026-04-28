@@ -648,6 +648,10 @@ export default function PublicStorefront() {
     paymentMethod: 'card' | 'upi' | 'wallet' | 'cash'
   ) => {
     try {
+      if (paymentMethod === 'upi' || paymentMethod === 'wallet') {
+        throw new Error('UPI and wallet payments are not live yet. Please use Card or Cash on Delivery.');
+      }
+
       if (!vendorId) {
         throw new Error('Storefront not found. Please refresh and try again.');
       }

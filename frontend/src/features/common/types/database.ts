@@ -6,7 +6,7 @@
  * type safety for all database operations.
  * 
  * Generated: 2026-11-10T06:04:42.814Z
- * Project: https://ovfcyvyavpzkijyfhezp.supabase.co
+ * Project: Supabase
  */
 
 export type Json =
@@ -17,8 +17,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type OrderStatus = 'pending' | 'processing' | 'ready' | 'completed' | 'cancelled'
-export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded'
+export type OrderStatus = 'pending' | 'processing' | 'preparing' | 'ready' | 'completed' | 'cancelled'
+export type PaymentStatus = 'pending' | 'unpaid' | 'completed' | 'failed' | 'refunded'
 export type PaymentMethod = 'card' | 'upi' | 'cash' | 'wallet'
 
 export interface Database {
@@ -212,11 +212,36 @@ export interface Database {
           description: string | null
           price: number
           category: string | null
+          subcategory: string | null
+          tags: string | null
+          dietary_tags: string[] | null
+          sku: string | null
+          unit_of_measure: string | null
+          allergens: string | null
+          ingredients: string | null
+          internal_notes: string | null
+          availability_mode: 'quantity' | 'requirement' | null
           image_url: string | null
           diet_type: string | null
           is_available: boolean
           stock_quantity: number
+          daily_quantity: number | null
           low_stock_threshold: number
+          min_order_quantity: number | null
+          promo_price: number | null
+          promo_valid_until: string | null
+          coupon_applicable: boolean | null
+          gst_rate: number | null
+          packaging_charge: number | null
+          handling_charge: number | null
+          variants: Json | null
+          addons: Json | null
+          available_from: string | null
+          available_until: string | null
+          is_bestseller: boolean | null
+          is_recommended: boolean | null
+          preparation_time_minutes: number | null
+          spicy_level: string | null
           created_at: string
           updated_at: string
         }
@@ -227,11 +252,36 @@ export interface Database {
           description?: string | null
           price: number
           category?: string | null
+          subcategory?: string | null
+          tags?: string | null
+          dietary_tags?: string[] | null
+          sku?: string | null
+          unit_of_measure?: string | null
+          allergens?: string | null
+          ingredients?: string | null
+          internal_notes?: string | null
+          availability_mode?: 'quantity' | 'requirement' | null
           image_url?: string | null
           diet_type?: string | null
           is_available?: boolean
           stock_quantity?: number
+          daily_quantity?: number | null
           low_stock_threshold?: number
+          min_order_quantity?: number | null
+          promo_price?: number | null
+          promo_valid_until?: string | null
+          coupon_applicable?: boolean | null
+          gst_rate?: number | null
+          packaging_charge?: number | null
+          handling_charge?: number | null
+          variants?: Json | null
+          addons?: Json | null
+          available_from?: string | null
+          available_until?: string | null
+          is_bestseller?: boolean | null
+          is_recommended?: boolean | null
+          preparation_time_minutes?: number | null
+          spicy_level?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -242,11 +292,36 @@ export interface Database {
           description?: string | null
           price?: number
           category?: string | null
+          subcategory?: string | null
+          tags?: string | null
+          dietary_tags?: string[] | null
+          sku?: string | null
+          unit_of_measure?: string | null
+          allergens?: string | null
+          ingredients?: string | null
+          internal_notes?: string | null
+          availability_mode?: 'quantity' | 'requirement' | null
           image_url?: string | null
           diet_type?: string | null
           is_available?: boolean
           stock_quantity?: number
+          daily_quantity?: number | null
           low_stock_threshold?: number
+          min_order_quantity?: number | null
+          promo_price?: number | null
+          promo_valid_until?: string | null
+          coupon_applicable?: boolean | null
+          gst_rate?: number | null
+          packaging_charge?: number | null
+          handling_charge?: number | null
+          variants?: Json | null
+          addons?: Json | null
+          available_from?: string | null
+          available_until?: string | null
+          is_bestseller?: boolean | null
+          is_recommended?: boolean | null
+          preparation_time_minutes?: number | null
+          spicy_level?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -276,6 +351,13 @@ export interface Database {
           delivery_address: string | null
           customer_email: string | null
           notes: string | null
+          table_code: string | null
+          table_slug: string | null
+          kitchen_state: 'queued' | 'active' | 'done' | null
+          queue_rank: number | null
+          activated_at: string | null
+          delivered_at: string | null
+          is_followup: boolean | null
           created_at: string
           updated_at: string
         }
@@ -295,6 +377,13 @@ export interface Database {
           delivery_address?: string | null
           customer_email?: string | null
           notes?: string | null
+          table_code?: string | null
+          table_slug?: string | null
+          kitchen_state?: 'queued' | 'active' | 'done' | null
+          queue_rank?: number | null
+          activated_at?: string | null
+          delivered_at?: string | null
+          is_followup?: boolean | null
           created_at?: string
           updated_at?: string
         }
@@ -314,6 +403,13 @@ export interface Database {
           delivery_address?: string | null
           customer_email?: string | null
           notes?: string | null
+          table_code?: string | null
+          table_slug?: string | null
+          kitchen_state?: 'queued' | 'active' | 'done' | null
+          queue_rank?: number | null
+          activated_at?: string | null
+          delivered_at?: string | null
+          is_followup?: boolean | null
           created_at?: string
           updated_at?: string
         }
@@ -504,6 +600,79 @@ export interface Database {
           }
         ]
       }
+      audit_logs: {
+        Row: {
+          audit_id: number
+          entity_table: string
+          entity_id: string
+          action_type: string
+          actor_id: string
+          state_before: Json | null
+          state_after: Json | null
+          timestamp: string
+        }
+        Insert: {
+          audit_id?: number
+          entity_table: string
+          entity_id: string
+          action_type: string
+          actor_id: string
+          state_before?: Json | null
+          state_after?: Json | null
+          timestamp?: string
+        }
+        Update: {
+          audit_id?: number
+          entity_table?: string
+          entity_id?: string
+          action_type?: string
+          actor_id?: string
+          state_before?: Json | null
+          state_after?: Json | null
+          timestamp?: string
+        }
+        Relationships: []
+      }
+      vendor_tables: {
+        Row: {
+          id: string
+          vendor_id: string
+          table_slug: string
+          table_code: string
+          zone: string | null
+          display_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          vendor_id: string
+          table_slug: string
+          table_code: string
+          zone?: string | null
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          vendor_id?: string
+          table_slug?: string
+          table_code?: string
+          zone?: string | null
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_tables_vendor_id_fkey"
+            columns: ["vendor_id"]
+            referencedRelation: "vendor_profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -521,6 +690,26 @@ export interface Database {
           _quantity_change: number
         }
         Returns: boolean
+      }
+      create_table_order_with_queue: {
+        Args: {
+          p_vendor_id: string
+          p_customer_id: string | null
+          p_guest_session_id: string | null
+          p_items: Json
+          p_total_amount: number
+          p_status: string
+          p_payment_status: string
+          p_payment_method: string | null
+          p_customer_name: string
+          p_customer_phone: string
+          p_customer_email: string | null
+          p_order_number: string
+          p_notes: string | null
+          p_table_code: string | null
+          p_table_slug: string | null
+        }
+        Returns: Database['public']['Tables']['orders']['Row']
       }
     }
     Enums: {

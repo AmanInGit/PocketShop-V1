@@ -1,97 +1,101 @@
 # PocketShop Documentation
 
-This folder contains all project documentation organized by category.
+This folder contains the project documentation, organized so each type of file has a clear place.
 
-## 📋 Project inventory
+## Documentation Map
 
-**[PROJECT_INVENTORY.md](PROJECT_INVENTORY.md)** – Full list of everything in the project (routes, features, components, docs, scripts) for checking things one by one.
+### `architecture/`
 
-## 📁 Folder Structure
+Repository and codebase structure references.
 
-### `/setup/` - Setup & Configuration Guides
-**Purpose:** Step-by-step setup instructions and configuration references
+- `repository-structure.md`
+- `frontend-structure.md`
 
-- `AUTH_SETUP.md` - Complete authentication setup checklist
-- `GOOGLE_OAUTH_SETUP.md` - Google OAuth setup verification guide
-- `PROJECT_CONFIG_SUMMARY.md` - Complete configuration summary (ports, auth, Supabase, Google Cloud)
-- `PORT_CONFIG.md` - Port configuration reference (use port 5173)
+### `database/`
 
-### `/troubleshooting/` - Troubleshooting Guides
-**Purpose:** Debugging guides and fix instructions
+Database guidance and active SQL reference material.
 
-- `/oauth/` - OAuth-specific troubleshooting
-  - `OAUTH_TROUBLESHOOTING.md` - Comprehensive OAuth troubleshooting checklist
-  - `OAUTH_FIX.md` - Fix for "Unable to exchange external code" error
-  - `OAUTH_DEEP_TROUBLESHOOTING.md` - Advanced OAuth debugging (when basic fixes don't work)
-  - `VERIFY_REDIRECT_URIS.md` - Guide to verify Google Cloud Console redirect URIs
-  - `STEP_BY_STEP_FIX.md` - Step-by-step OAuth fix guide (follow in order)
+- `database-overview.md`
+- `schema.sql`
+- `triggers.sql`
+- `policies/`
+- `migrations/`
+- `reference/`
 
-See [troubleshooting/README.md](troubleshooting/README.md) for detailed troubleshooting index.
+### `implementation/`
 
-### `/guides/` - Process & Flow Guides
-**Purpose:** Application flow documentation and process guides
+Current execution priorities and feature planning.
 
-- `END_TO_END_FLOW.md` - Complete application flow mapping (for bug hunting and QA)
-- `INDEX.md` - Quick reference index for all documentation files
+- `feature-roadmap.md`
 
-### `/database/` - Database Documentation
-**Purpose:** Database schema, SQL scripts, and RLS policies
+### `planning/`
 
-- `README.md` - Database documentation index
-- `DATABASE_SETUP_COMPLETE.sql` - Complete database setup SQL
-- `schema.sql` - Database schema
-- `triggers.sql` - Database triggers
-- `RLS_POLICIES.sql` - Row Level Security policies
-- `rls_policies_full.sql` - Complete RLS policies
-- `reference/` - Internal reference docs (for database setup when errors occur)
+Working plans that help explain delivery focus.
 
-### `/reports/` - Reports & Checklists
-**Purpose:** Project reports, checklists, and guides
+- `vendor-execution-plan.md`
 
-- `README.md` - Reports index
-- `/guides/` - Setup and implementation guides
-  - `README.md` - Guides index
-- `/sql/` - SQL scripts (duplicates from database/ for reporting)
+### `status/`
 
-### `/postman/` - API Testing
-**Purpose:** Postman collection for API testing
+Status notes for important implementation tracks.
 
-- `PocketShop_API.postman_collection.json` - Postman API collection
+- `table-ordering-status.md`
 
-### `/archive/` - Archived Files
-**Purpose:** Old component files and deprecated code
+### `testing/`
 
-- Old component files (VendorOnboarding, etc.)
+Testing references and test-coverage guidance.
 
-## 🔍 Quick Links
+- `routing-test-guide.md`
 
-### Getting Started
-- **Auth Setup**: [Setup Guide](setup/AUTH_SETUP.md)
-- **Google OAuth**: [OAuth Setup](setup/GOOGLE_OAUTH_SETUP.md)
-- **Configuration**: [Config Summary](setup/PROJECT_CONFIG_SUMMARY.md)
+### `troubleshooting/`
 
-### Troubleshooting
-- **OAuth Issues**: [OAuth Troubleshooting](troubleshooting/oauth/STEP_BY_STEP_FIX.md)
-- **Complete Troubleshooting Index**: [Troubleshooting README](troubleshooting/README.md)
+Operational troubleshooting references.
 
-### Understanding the App
-- **Application Flow**: [End-to-End Flow](guides/END_TO_END_FLOW.md)
+- `troubleshooting-overview.md`
+- `service-health-monitor.md`
+- `oauth/`
 
-### Database
-- **Database Setup**: [Database Documentation](database/README.md)
+### `setup/`
 
-## 📄 Documentation Categories
+Deployment-related setup notes only.
 
-| Category | Purpose | Location |
-|----------|---------|----------|
-| **Setup** | Initial setup and configuration | `/setup/` |
-| **Troubleshooting** | Debugging and fixing issues | `/troubleshooting/` |
-| **Guides** | Process flows and how-tos | `/guides/` |
-| **Database** | Schema, SQL, RLS policies | `/database/` |
-| **Reports** | Project reports and checklists | `/reports/` |
-| **API** | API testing collections | `/postman/` |
-| **Archive** | Deprecated code | `/archive/` |
+- `deployment-guide.md`
 
----
+### `guides/`
 
-For the main project README, see [../README.md](../README.md)
+General walkthroughs and product flow references.
+
+- `END_TO_END_FLOW.md`
+
+### `requirements/`
+
+Product requirement references and review notes.
+
+- `vendor-dashboard-and-orders.md`
+
+### `sql/archive/`
+
+Archived SQL scripts kept for reference. These files are separated from the active application structure so the repository is easier to understand during review.
+
+### `api/postman/`
+
+API collection assets.
+
+- `PocketShop_API.postman_collection.json`
+
+## Reading Order
+
+If you are reviewing the project for the first time, start with:
+
+1. `../README.md`
+2. `architecture/repository-structure.md`
+3. `database/database-overview.md`
+4. `implementation/feature-roadmap.md`
+5. `guides/END_TO_END_FLOW.md`
+
+## Notes
+
+- `frontend/` and `supabase/` are the live technical areas of the product.
+- `docs/database/` now separates active schema, policies, and migrations more clearly.
+- archived SQL is preserved in `docs/sql/archive/` for context, not presented as active runtime code.
+- environment-specific setup checklists with sensitive-looking values were removed during cleanup.
+- misleading placeholder backend documentation has been removed so the repository reflects the actual architecture more clearly.

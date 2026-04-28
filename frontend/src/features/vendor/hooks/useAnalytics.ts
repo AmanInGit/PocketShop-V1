@@ -14,6 +14,11 @@ import {
   endOfWeek,
 } from 'date-fns';
 
+const isAnalyticsEligibleOrder = (order: any) => {
+  const paymentStatus = String(order?.payment_status || '').toLowerCase();
+  return paymentStatus === 'paid' || paymentStatus === 'completed';
+};
+
 export const useAnalytics = (days: number = 30) => {
   const { data: vendor } = useVendor();
 
@@ -41,15 +46,17 @@ export const useAnalytics = (days: number = 30) => {
         throw ordersError;
       }
 
+      const eligibleOrders = (orders || []).filter(isAnalyticsEligibleOrder);
+
       // Calculate daily sales (key: yyyy-MM-dd for correct sort)
-      const salesByDayRaw = orders?.reduce((acc, order) => {
+      const salesByDayRaw = eligibleOrders.reduce((acc, order) => {
         const day = format(parseISO(order.created_at), 'yyyy-MM-dd');
         acc[day] = (acc[day] || 0) + Number(order.total_amount);
         return acc;
       }, {} as Record<string, number>);
 
       // Calculate monthly sales (key: yyyy-MM for correct sort)
-      const salesByMonthRaw = orders?.reduce((acc, order) => {
+      const salesByMonthRaw = eligibleOrders.reduce((acc, order) => {
         const month = format(parseISO(order.created_at), 'yyyy-MM');
         acc[month] = (acc[month] || 0) + Number(order.total_amount);
         return acc;
@@ -72,7 +79,7 @@ export const useAnalytics = (days: number = 30) => {
         }));
 
       // Calculate hourly distribution (peak hours)
-      const ordersByHour = orders?.reduce((acc, order) => {
+      const ordersByHour = eligibleOrders.reduce((acc, order) => {
         const hour = new Date(order.created_at).getHours();
         acc[hour] = (acc[hour] || 0) + 1;
         return acc;
@@ -98,7 +105,7 @@ export const useAnalytics = (days: number = 30) => {
 
       // Calculate product performance
       // Items are stored as JSONB array in orders.items
-      const productStats = orders?.reduce((acc, order) => {
+      const productStats = eligibleOrders.reduce((acc, order) => {
         const items = order.items || [];
         if (Array.isArray(items)) {
           items.forEach((item: any) => {
@@ -138,7 +145,7 @@ export const useAnalytics = (days: number = 30) => {
       }, {} as Record<string, any>);
 
       // Calculate status distribution
-      const statusDistribution = orders?.reduce((acc, order) => {
+      const statusDistribution = eligibleOrders.reduce((acc, order) => {
         acc[order.status] = (acc[order.status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -148,14 +155,14 @@ export const useAnalytics = (days: number = 30) => {
       const lastWeekStart = startOfWeek(subDays(new Date(), 7));
       const lastWeekEnd = endOfWeek(subDays(new Date(), 7));
 
-      const thisWeekOrders = orders?.filter(o => 
+      const thisWeekOrders = eligibleOrders.filter(o => 
         new Date(o.created_at) >= thisWeekStart
-      ) || [];
+      );
       
-      const lastWeekOrders = orders?.filter(o => {
+      const lastWeekOrders = eligibleOrders.filter(o => {
         const date = new Date(o.created_at);
         return date >= lastWeekStart && date <= lastWeekEnd;
-      }) || [];
+      });
 
       const thisWeekRevenue = thisWeekOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
       const lastWeekRevenue = lastWeekOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
@@ -165,14 +172,14 @@ export const useAnalytics = (days: number = 30) => {
       const todayEnd = endOfDay(new Date());
       const yesterdayStart = startOfDay(subDays(new Date(), 1));
       const yesterdayEnd = endOfDay(subDays(new Date(), 1));
-      const todayOrders = orders?.filter((o) => {
+      const todayOrders = eligibleOrders.filter((o) => {
         const d = new Date(o.created_at);
         return d >= todayStart && d <= todayEnd;
-      }) || [];
-      const yesterdayOrders = orders?.filter((o) => {
+      });
+      const yesterdayOrders = eligibleOrders.filter((o) => {
         const d = new Date(o.created_at);
         return d >= yesterdayStart && d <= yesterdayEnd;
-      }) || [];
+      });
       const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
       const yesterdayRevenue = yesterdayOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
 
@@ -181,14 +188,14 @@ export const useAnalytics = (days: number = 30) => {
       const thisMonthEnd = endOfMonth(new Date());
       const lastMonthStart = startOfMonth(subMonths(new Date(), 1));
       const lastMonthEnd = endOfMonth(subMonths(new Date(), 1));
-      const thisMonthOrders = orders?.filter((o) => {
+      const thisMonthOrders = eligibleOrders.filter((o) => {
         const d = new Date(o.created_at);
         return d >= thisMonthStart && d <= thisMonthEnd;
-      }) || [];
-      const lastMonthOrders = orders?.filter((o) => {
+      });
+      const lastMonthOrders = eligibleOrders.filter((o) => {
         const d = new Date(o.created_at);
         return d >= lastMonthStart && d <= lastMonthEnd;
-      }) || [];
+      });
       const thisMonthRevenue = thisMonthOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
       const lastMonthRevenue = lastMonthOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
 
@@ -204,7 +211,7 @@ export const useAnalytics = (days: number = 30) => {
         })),
       }));
 
-      orders?.forEach((order) => {
+      eligibleOrders.forEach((order) => {
         const date = new Date(order.created_at);
         const dIndex = date.getDay();
         const hour = date.getHours();
@@ -216,8 +223,8 @@ export const useAnalytics = (days: number = 30) => {
       });
 
       // Simple conversion funnel (orders placed -> completed)
-      const totalOrders = orders?.length || 0;
-      const completedOrders = orders?.filter((o) => o.status === 'completed').length || 0;
+      const totalOrders = eligibleOrders.length;
+      const completedOrders = eligibleOrders.filter((o) => o.status === 'completed').length;
       const conversionFunnel =
         totalOrders === 0
           ? [
@@ -241,10 +248,10 @@ export const useAnalytics = (days: number = 30) => {
       );
 
       return {
-        totalRevenue: orders?.reduce((sum, o) => sum + Number(o.total_amount), 0) || 0,
+        totalRevenue: eligibleOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
         totalOrders,
-        averageOrderValue: orders?.length 
-          ? (orders.reduce((sum, o) => sum + Number(o.total_amount), 0) / orders.length)
+        averageOrderValue: eligibleOrders.length 
+          ? (eligibleOrders.reduce((sum, o) => sum + Number(o.total_amount), 0) / eligibleOrders.length)
           : 0,
         salesByDay,
         salesByMonth,

@@ -43,6 +43,14 @@ export interface CreateOrderResponse {
   error?: string;
 }
 
+function isDeferredPaymentMethod(method?: CreateOrderPayload['paymentMethod']): boolean {
+  return method === 'card';
+}
+
+function shouldCreateImmediatePaymentRecord(method?: CreateOrderPayload['paymentMethod']): boolean {
+  return method === 'cash';
+}
+
 /**
  * Fetch products to calculate total and validate items
  */
@@ -203,7 +211,8 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
       order_number: orderNumber,
     });
 
-    const shouldUseTableQueueInsert = !!tableCode && tableCode !== 'PICKUP';
+    const deferOrderActivation = isDeferredPaymentMethod(paymentMethod);
+    const shouldUseTableQueueInsert = !!tableCode && tableCode !== 'PICKUP' && !deferOrderActivation;
     let order: any = null;
     let orderError: any = null;
 
@@ -316,11 +325,10 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
       },
     });
 
-    // Ensure payment record exists for non-card orders (fallback if DB trigger not run)
-    // UPI/wallet = instant payment → 'completed' so revenue shows immediately
-    // Cash = COD → 'pending' until vendor marks as paid
+    // Ensure a payment record exists for methods we currently support.
+    // Card payments are created from the checkout-session function to keep Stripe as the source of truth.
     const method = paymentMethod || 'cash';
-    if (method !== 'card') {
+    if (shouldCreateImmediatePaymentRecord(method)) {
       try {
         const { data: existing } = await supabase
           .from('payments')
@@ -328,46 +336,40 @@ export async function createOrderDirect(payload: CreateOrderPayload): Promise<Cr
           .eq('order_id', order.id)
           .maybeSingle();
 
-        const instantPayment = method === 'upi' || method === 'wallet';
-
         if (!existing) {
           const { error: payErr } = await supabase.from('payments').insert({
             order_id: order.id,
             amount: totalAmount,
             payment_method: method,
-            payment_status: instantPayment ? 'completed' : 'pending',
+            payment_status: 'pending',
           });
 
           if (payErr) {
             console.warn('Failed to create payment record (non-critical):', payErr);
           }
-        } else if (instantPayment && existing.payment_status !== 'completed') {
-          // Trigger created payment as 'pending' - upgrade UPI/wallet to completed
-          await supabase
-            .from('payments')
-            .update({ payment_status: 'completed' })
-            .eq('order_id', order.id);
         }
       } catch (payEx: any) {
         console.warn('Error ensuring payment record (non-critical):', payEx);
       }
     }
 
-    // Optionally update stock (can be disabled for development)
-    // In production, this should be handled by Edge Functions with proper locking
-    try {
-      for (const item of items) {
-        const product = products[item.productId];
-        if (product.stock_quantity !== null && product.stock_quantity !== undefined) {
-          await supabase.rpc('atomic_stock_update', {
-            _product_id: item.productId,
-            _quantity_change: -item.quantity,
-          });
+    // Reserve stock only for orders that are immediately actionable.
+    // Card orders wait for the Stripe webhook so failed/abandoned payments do not consume inventory.
+    if (!deferOrderActivation) {
+      try {
+        for (const item of items) {
+          const product = products[item.productId];
+          if (product.stock_quantity !== null && product.stock_quantity !== undefined) {
+            await supabase.rpc('atomic_stock_update', {
+              _product_id: item.productId,
+              _quantity_change: -item.quantity,
+            });
+          }
         }
+      } catch (stockError) {
+        // Log but don't fail - stock update can be handled separately
+        console.warn('Failed to update stock:', stockError);
       }
-    } catch (stockError) {
-      // Log but don't fail - stock update can be handled separately
-      console.warn('Failed to update stock:', stockError);
     }
 
     return {

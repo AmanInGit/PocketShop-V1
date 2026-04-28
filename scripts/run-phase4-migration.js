@@ -18,21 +18,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Supabase credentials
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://ovfcyvyavpzkijyfhezp.supabase.co';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_SERVICE_KEY) {
-  console.error('❌ Error: SUPABASE_SERVICE_ROLE_KEY environment variable is required');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('❌ Error: VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
   console.log('\n📝 To run this script:');
-  console.log('1. Get your service role key from Supabase Dashboard → Settings → API');
-  console.log('2. Run: SUPABASE_SERVICE_ROLE_KEY=your_key node scripts/run-phase4-migration.js');
+  console.log('1. Set VITE_SUPABASE_URL to your Supabase project URL');
+  console.log('2. Set SUPABASE_SERVICE_ROLE_KEY to your service role key');
+  console.log('3. Run: node scripts/run-phase4-migration.js');
   console.log('\n💡 Alternative: Run the migration directly in Supabase Dashboard → SQL Editor');
-  console.log('   File: docs/database/PHASE4_MIGRATION.sql');
+  console.log('   File: docs/database/migrations/phase4-migration.sql');
   process.exit(1);
 }
 
 // Read migration script
-const migrationPath = join(__dirname, '../docs/database/PHASE4_MIGRATION.sql');
+const migrationPath = join(__dirname, '../docs/database/migrations/phase4-migration.sql');
 let migrationSQL;
 
 try {
@@ -70,16 +71,14 @@ async function runMigration() {
     console.log('⚠️  Direct SQL execution via REST API is not supported by Supabase');
     console.log('\n💡 Please run the migration using one of these methods:');
     console.log('\n1. Supabase Dashboard (Recommended):');
-    console.log('   a. Go to https://supabase.com/dashboard/project/ovfcyvyavpzkijyfhezp');
+    console.log('   a. Open your Supabase project dashboard');
     console.log('   b. Navigate to SQL Editor → New Query');
-    console.log('   c. Copy and paste the contents of docs/database/PHASE4_MIGRATION.sql');
+    console.log('   c. Copy and paste the contents of docs/database/migrations/phase4-migration.sql');
     console.log('   d. Click "Run" or press Ctrl+Enter');
     console.log('\n2. Supabase CLI:');
     console.log('   a. Install Supabase CLI: npm install -g supabase');
-    console.log('   b. Link your project: supabase link --project-ref ovfcyvyavpzkijyfhezp');
-    console.log('   c. Run migration: supabase db push --file docs/database/PHASE4_MIGRATION.sql');
-    console.log('\n3. psql (if you have database credentials):');
-    console.log('   psql -h db.ovfcyvyavpzkijyfhezp.supabase.co -U postgres -d postgres -f docs/database/PHASE4_MIGRATION.sql');
+    console.log('   b. Link your project: supabase link --project-ref <your-project-ref>');
+    console.log('   c. Run the migration file from docs/database/migrations/');
 
     process.exit(0);
   } catch (error) {

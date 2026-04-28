@@ -253,7 +253,7 @@ function HeatmapMatrix({
 export default function Analytics() {
   const [days, setDays] = useState(30);
   const [activeChart, setActiveChart] = useState<ChartKey | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+  const [isDarkMode] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("ps-dashboard-theme") === "dark";
   });
@@ -266,6 +266,7 @@ export default function Analytics() {
     data: insights,
     isLoading: insightsLoading,
   } = useAIInsights();
+  const analyticsData: any = analytics;
 
   const [realTimeMetrics, setRealTimeMetrics] = useState({
     revenue: 0,
@@ -316,20 +317,6 @@ export default function Analytics() {
     setLiveOrdersTrend(baseTrend);
   }, [analytics]);
 
-  const peakHoursData = useMemo(() => {
-    return Array.from({ length: 24 }, (_, hour) => {
-      const existing = analytics?.heatmap
-        ?.flatMap((day: any) => day.hours)
-        .filter((cell: any) => cell.hour === hour)
-        .reduce((sum: number, cell: any) => sum + cell.orders, 0);
-      return {
-        hour,
-        label: formatHour(hour),
-        orders: existing || 0,
-      };
-    });
-  }, [analytics?.heatmap]);
-
   const metricCards = [
     {
       key: "revenue",
@@ -366,9 +353,9 @@ export default function Analytics() {
         maximumFractionDigits: 2,
       }),
       subtitle: "Per successful order",
-      delta: analytics?.todayVsYesterday?.aov?.delta ?? 0,
+      delta: analyticsData?.todayVsYesterday?.aov?.delta ?? 0,
       deltaLabel: "vs yesterday",
-      trend: ((analytics?.todayVsYesterday?.aov?.delta ?? 0) >= 0
+      trend: ((analyticsData?.todayVsYesterday?.aov?.delta ?? 0) >= 0
         ? "up"
         : "down") as "up" | "down" | "neutral",
       icon: <TrendingUp className="h-5 w-5" />,
@@ -377,30 +364,30 @@ export default function Analytics() {
     },
     {
       key: "anomaly",
-      title: analytics?.anomaly?.isAnomaly
+      title: analyticsData?.anomaly?.isAnomaly
         ? "Anomaly Detected"
         : "Stability Monitor",
-      value: analytics?.anomaly?.isAnomaly
-        ? `${analytics?.anomaly?.direction === "up" ? "+" : "-"}${(
-            analytics?.anomaly?.severity ?? 0
+      value: analyticsData?.anomaly?.isAnomaly
+        ? `${analyticsData?.anomaly?.direction === "up" ? "+" : "-"}${(
+            analyticsData?.anomaly?.severity ?? 0
           ).toFixed(1)}σ`
         : "All clear",
-      subtitle: analytics?.anomaly?.isAnomaly
-        ? `Spike on ${analytics?.anomaly?.displayDate}`
+      subtitle: analyticsData?.anomaly?.isAnomaly
+        ? `Spike on ${analyticsData?.anomaly?.displayDate}`
         : "Within expected thresholds",
-      delta: analytics?.anomaly?.isAnomaly
-        ? analytics?.anomaly?.severity ?? 0
+      delta: analyticsData?.anomaly?.isAnomaly
+        ? analyticsData?.anomaly?.severity ?? 0
         : null,
-      deltaLabel: analytics?.anomaly?.isAnomaly ? "Deviation" : undefined,
-      trend: (analytics?.anomaly?.direction === "down"
+      deltaLabel: analyticsData?.anomaly?.isAnomaly ? "Deviation" : undefined,
+      trend: (analyticsData?.anomaly?.direction === "down"
         ? "down"
         : "up") as "up" | "down" | "neutral",
-      icon: analytics?.anomaly?.isAnomaly ? (
+      icon: analyticsData?.anomaly?.isAnomaly ? (
         <AlertTriangle className="h-5 w-5 text-red-500" />
       ) : (
         <Activity className="h-5 w-5" />
       ),
-      tone: analytics?.anomaly?.isAnomaly
+      tone: analyticsData?.anomaly?.isAnomaly
         ? ("info" as const)
         : ("neutral" as const),
       loading: analyticsLoading,
@@ -409,48 +396,48 @@ export default function Analytics() {
   ];
 
   const comparisonMetrics =
-    analytics?.todayVsYesterday
+    analyticsData?.todayVsYesterday
       ? [
           {
             label: "Revenue",
             today: formatCurrency(
-              analytics.todayVsYesterday.revenue?.today || 0,
+              analyticsData.todayVsYesterday.revenue?.today || 0,
               { maximumFractionDigits: 0 }
             ),
             yesterday: formatCurrency(
-              analytics.todayVsYesterday.revenue?.yesterday || 0,
+              analyticsData.todayVsYesterday.revenue?.yesterday || 0,
               { maximumFractionDigits: 0 }
             ),
-            delta: analytics.todayVsYesterday.revenue?.delta || 0,
+            delta: analyticsData.todayVsYesterday.revenue?.delta || 0,
           },
           {
             label: "Orders",
             today: formatNumber(
-              analytics.todayVsYesterday.orders?.today || 0
+              analyticsData.todayVsYesterday.orders?.today || 0
             ),
             yesterday: formatNumber(
-              analytics.todayVsYesterday.orders?.yesterday || 0
+              analyticsData.todayVsYesterday.orders?.yesterday || 0
             ),
-            delta: analytics.todayVsYesterday.orders?.delta || 0,
+            delta: analyticsData.todayVsYesterday.orders?.delta || 0,
           },
           {
             label: "Avg Order Value",
             today: formatCurrency(
-              analytics.todayVsYesterday.aov?.today || 0,
+              analyticsData.todayVsYesterday.aov?.today || 0,
               { maximumFractionDigits: 2 }
             ),
             yesterday: formatCurrency(
-              analytics.todayVsYesterday.aov?.yesterday || 0,
+              analyticsData.todayVsYesterday.aov?.yesterday || 0,
               { maximumFractionDigits: 2 }
             ),
-            delta: analytics.todayVsYesterday.aov?.delta || 0,
+            delta: analyticsData.todayVsYesterday.aov?.delta || 0,
           },
         ]
       : [];
 
-  const segmentDevices = analytics?.segmentAnalytics?.devices ?? [];
-  const segmentRegions = analytics?.segmentAnalytics?.regions ?? [];
-  const segmentCategories = analytics?.segmentAnalytics?.categories ?? [];
+  const segmentDevices = analyticsData?.segmentAnalytics?.devices ?? [];
+  const segmentRegions = analyticsData?.segmentAnalytics?.regions ?? [];
+  const segmentCategories = analyticsData?.segmentAnalytics?.categories ?? [];
 
   const openChart = (key: ChartKey) => setActiveChart(key);
 
@@ -616,7 +603,7 @@ export default function Analytics() {
           >
             <PieChart>
               <Pie
-                data={analytics?.categoryPerformance || []}
+                data={(analytics?.categoryPerformance || []) as any[]}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
@@ -625,7 +612,7 @@ export default function Analytics() {
                 dataKey="revenue"
               >
                 {(analytics?.categoryPerformance || []).map(
-                  (entry: any, index: number) => (
+                  (_entry: any, index: number) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={COLORS[index % COLORS.length]}
@@ -763,11 +750,7 @@ export default function Analytics() {
                   fill="hsl(var(--foreground))"
                   stroke="none"
                   dataKey="stage"
-                  formatter={(value: string, entry: any) =>
-                    `${value}${
-                      entry?.value ? ` (${entry.value})` : ""
-                    }`
-                  }
+                  formatter={(value: React.ReactNode) => value}
                 />
               </Funnel>
             </FunnelChart>
@@ -806,7 +789,7 @@ export default function Analytics() {
           </ResponsiveContainer>
         );
       case "radar":
-        if (!analytics?.radarMetrics || !analytics.radarMetrics.length) {
+        if (!analyticsData?.radarMetrics || !analyticsData.radarMetrics.length) {
           return (
             <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
               Benchmark radar coming soon.
@@ -818,7 +801,7 @@ export default function Analytics() {
             width="100%"
             height={extended ? 420 : 300}
           >
-            <RadarChart data={analytics.radarMetrics}>
+            <RadarChart data={analyticsData.radarMetrics}>
               <PolarGrid />
               <PolarAngleAxis dataKey="metric" />
               <PolarRadiusAxis angle={30} domain={[0, 120]} />
@@ -913,9 +896,9 @@ export default function Analytics() {
                   Comparison Pulse
                 </h2>
               </div>
-              {analytics?.trendSummary?.summary && (
+              {analyticsData?.trendSummary?.summary && (
                 <p className="text-sm text-muted-foreground/80">
-                  {analytics.trendSummary.summary}
+                  {analyticsData.trendSummary.summary}
                 </p>
               )}
             </div>
@@ -1270,7 +1253,7 @@ export default function Analytics() {
           </motion.div>
         )}
 
-        {analytics?.statusDistribution?.length > 0 && (
+        {(analyticsData?.statusDistribution?.length ?? 0) > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 32 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -1292,9 +1275,9 @@ export default function Analytics() {
               </div>
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              {analytics.statusDistribution.map(
+              {analyticsData.statusDistribution.map(
                 (status: any, index: number) => {
-                  const total = analytics.statusDistribution.reduce(
+                  const total = analyticsData.statusDistribution.reduce(
                     (sum: number, entry: any) => sum + entry.count,
                     0
                   );

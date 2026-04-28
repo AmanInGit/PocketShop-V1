@@ -85,14 +85,6 @@ out
 *.tmp
 *.temp
 
-# Documentation - only root README.md tracked
-*.md
-!README.md
-
-# Database operational/fix scripts (report SQL in docs/reports/sql/ kept)
-docs/database/*.sql
-docs/database/**/*.sql
-
 # Archived reference repository
 .archive/dawn-of-app-craft/
 

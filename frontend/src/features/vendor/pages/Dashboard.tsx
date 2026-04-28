@@ -9,7 +9,7 @@
  * NOTE: Dark mode styling will be revisited after the full migration is complete.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   IndianRupee,
@@ -668,7 +668,7 @@ export default function Dashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -850,7 +850,7 @@ export default function Dashboard() {
                             cy="50%"
                             outerRadius={80}
                             dataKey="value"
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            label={({ name, percent }) => `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`}
                           >
                             {topProductsPieData.map((entry, i) => (
                               <Cell key={i} fill={entry.color} />
@@ -968,7 +968,7 @@ export default function Dashboard() {
                             cy="50%"
                             outerRadius={80}
                             dataKey="value"
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            label={({ name, percent }) => `${name} ${(Number(percent ?? 0) * 100).toFixed(0)}%`}
                           >
                             {topCategoriesPieData.map((entry, i) => (
                               <Cell key={i} fill={entry.color} />

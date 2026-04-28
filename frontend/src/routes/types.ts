@@ -19,7 +19,7 @@ export interface RouteConfig {
   path: RoutePath | string;
   
   /** Component to render (can be lazy loaded) */
-  component: ComponentType<any> | LazyExoticComponent<ComponentType<any>>;
+  component?: ComponentType<any> | LazyExoticComponent<ComponentType<any>>;
   
   /** Route title for document title and breadcrumbs */
   title: string;
@@ -46,7 +46,7 @@ export interface RouteConfig {
   eager?: boolean;
   
   /** Loading fallback variant */
-  loadingVariant?: 'default' | 'dashboard' | 'onboarding';
+  loadingVariant?: 'default' | 'dashboard' | 'onboarding' | 'full';
   
   /** Additional route props */
   props?: Record<string, any>;

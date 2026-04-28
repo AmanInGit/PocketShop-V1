@@ -7,6 +7,21 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+async function decrementOrderStock(
+  supabase: ReturnType<typeof createClient>,
+  items: Array<{ product_id?: string; quantity?: number }> | null | undefined,
+) {
+  if (!Array.isArray(items)) return;
+
+  for (const item of items) {
+    if (!item?.product_id || !item?.quantity) continue;
+    await supabase.rpc("atomic_stock_update", {
+      _product_id: item.product_id,
+      _quantity_change: -Number(item.quantity),
+    });
+  }
+}
+
 function parseStripeSignature(signatureHeader: string) {
   const pairs = signatureHeader.split(",").map((part) => part.trim());
   const timestampPart = pairs.find((part) => part.startsWith("t="));
@@ -109,6 +124,12 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    const { data: orderRow } = await supabase
+      .from("orders")
+      .select("id, total_amount, payment_status, items")
+      .eq("id", orderId)
+      .maybeSingle();
+
     const { data: paymentRow } = await supabase
       .from("payments")
       .select("id, payment_status")
@@ -116,6 +137,10 @@ serve(async (req) => {
       .maybeSingle();
 
     if (event.type === "checkout.session.completed" || event.type === "payment_intent.succeeded") {
+      const alreadyPaid =
+        String(orderRow?.payment_status ?? "").toLowerCase() === "paid" ||
+        String(paymentRow?.payment_status ?? "").toLowerCase() === "completed";
+
       await supabase
         .from("orders")
         .update({
@@ -126,6 +151,13 @@ serve(async (req) => {
           activated_at: new Date().toISOString(),
         })
         .eq("id", orderId);
+
+      if (!alreadyPaid) {
+        await decrementOrderStock(
+          supabase,
+          (orderRow?.items as Array<{ product_id?: string; quantity?: number }> | null | undefined) ?? [],
+        );
+      }
 
       if (paymentRow?.id) {
         await supabase
@@ -138,10 +170,9 @@ serve(async (req) => {
           })
           .eq("id", paymentRow.id);
       } else {
-        const { data: order } = await supabase.from("orders").select("total_amount").eq("id", orderId).maybeSingle();
         await supabase.from("payments").insert({
           order_id: orderId,
-          amount: Number(order?.total_amount ?? 0),
+          amount: Number(orderRow?.total_amount ?? 0),
           payment_method: "card",
           payment_status: "completed",
           transaction_id: sessionId ?? null,

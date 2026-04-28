@@ -10,7 +10,7 @@ import { RouteSkeleton } from './RouteSkeleton';
 
 interface LoadingFallbackProps {
   message?: string;
-  variant?: 'default' | 'dashboard' | 'onboarding';
+  variant?: 'default' | 'dashboard' | 'onboarding' | 'full';
 }
 
 export const LoadingFallback: React.FC<LoadingFallbackProps> = ({ 

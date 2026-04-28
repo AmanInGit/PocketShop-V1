@@ -73,12 +73,14 @@ const VendorDashboardInner: React.FC = () => {
 
     // No cache: fetch once (e.g. first load before profile loaded)
     let mounted = true;
-    supabase
-      .from('vendor_profiles')
-      .select('onboarding_status')
-      .eq('user_id', user.id)
-      .single()
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('vendor_profiles')
+          .select('onboarding_status')
+          .eq('user_id', user.id)
+          .single();
+
         if (!mounted) return;
         if (error || !data || data.onboarding_status !== 'completed') {
           navigate(ROUTES.VENDOR_ONBOARDING_STAGE_1);
@@ -89,10 +91,10 @@ const VendorDashboardInner: React.FC = () => {
             localStorage.setItem('ps_vendor_seen_welcome', '1');
           }
         }
-      })
-      .catch(() => {
+      } catch {
         if (mounted) navigate(ROUTES.VENDOR_ONBOARDING_STAGE_1);
-      });
+      }
+    })();
     return () => { mounted = false; };
   }, [user, loading, onboardingStatus, navigate]);
 

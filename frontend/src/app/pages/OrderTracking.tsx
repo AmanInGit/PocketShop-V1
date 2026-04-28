@@ -61,13 +61,13 @@ export default function OrderTracking() {
   const fetchOrder = async () => {
     if (!orderId) return;
     try {
-      const { data, err } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .select('*')
         .eq('id', orderId)
         .single();
 
-      if (err) throw err;
+      if (error) throw error;
       setOrder(data as OrderData);
       setError(null);
     } catch (e: unknown) {
@@ -170,8 +170,15 @@ export default function OrderTracking() {
   }
 
   const items = Array.isArray(order.items) ? order.items : [];
+  const paymentStatus = String(order.payment_status || '').toLowerCase();
+  const paymentMethod = String(order.payment_method || '').toLowerCase();
+  const awaitingPaymentConfirmation =
+    order.status === 'pending' &&
+    paymentMethod === 'card' &&
+    paymentStatus !== 'paid' &&
+    paymentStatus !== 'completed';
   const statusDisplay: Record<string, string> = {
-    pending: 'Order placed',
+    pending: awaitingPaymentConfirmation ? 'Payment confirmation pending' : 'Order placed',
     processing: 'Being prepared',
     preparing: 'Being prepared',
     ready: 'Ready for pickup/delivery',
@@ -214,10 +221,13 @@ export default function OrderTracking() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <OrderStatusTracker currentStatus={order.status} />
+            <OrderStatusTracker
+              currentStatus={order.status}
+              pendingLabel={awaitingPaymentConfirmation ? 'Payment Confirming' : 'Order Placed'}
+            />
 
             {/* 5-min acceptance timer – only for pending orders */}
-            {order.status === 'pending' && (
+            {order.status === 'pending' && !awaitingPaymentConfirmation && (
               <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
                 <AcceptanceCountdown
                   createdAt={order.created_at}
@@ -227,6 +237,16 @@ export default function OrderTracking() {
                 />
                 <p className="text-xs text-muted-foreground mt-2">
                   Vendor must accept within 5 minutes or the order may be cancelled.
+                </p>
+              </div>
+            )}
+            {awaitingPaymentConfirmation && (
+              <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  Your payment is still being verified.
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  The order will move to the vendor only after Stripe webhook confirmation is received.
                 </p>
               </div>
             )}

@@ -1,7 +1,8 @@
 import { Check, Clock, ChefHat, Package, CheckCircle } from 'lucide-react';
 
 interface OrderStatusTrackerProps {
-  currentStatus: 'pending' | 'processing' | 'ready' | 'completed' | 'cancelled';
+  currentStatus: 'pending' | 'processing' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  pendingLabel?: string;
 }
 
 const statusSteps = [
@@ -13,9 +14,16 @@ const statusSteps = [
 
 const statusOrder = ['pending', 'processing', 'ready', 'completed'];
 
-export function OrderStatusTracker({ currentStatus }: OrderStatusTrackerProps) {
-  const currentIndex = statusOrder.indexOf(currentStatus);
+export function OrderStatusTracker({
+  currentStatus,
+  pendingLabel = 'Order Placed',
+}: OrderStatusTrackerProps) {
+  const normalizedStatus = currentStatus === 'preparing' ? 'processing' : currentStatus;
+  const currentIndex = statusOrder.indexOf(normalizedStatus);
   const isCancelled = currentStatus === 'cancelled';
+  const displaySteps = statusSteps.map((step) =>
+    step.key === 'pending' ? { ...step, label: pendingLabel } : step,
+  );
 
   return (
     <div className="w-full">
@@ -40,10 +48,10 @@ export function OrderStatusTracker({ currentStatus }: OrderStatusTrackerProps) {
 
           {/* Status Steps */}
           <div className="relative flex justify-between">
-            {statusSteps.map((step, index) => {
+            {displaySteps.map((step, index) => {
               const Icon = step.icon;
               const isActive = index <= currentIndex;
-              const isCurrent = step.key === currentStatus;
+              const isCurrent = step.key === normalizedStatus;
 
               return (
                 <div key={step.key} className="flex flex-col items-center gap-2 flex-1">

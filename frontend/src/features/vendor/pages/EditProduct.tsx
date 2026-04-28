@@ -6,7 +6,6 @@
  * to edit an existing product inside the vendor dashboard.
  */
 
-import React from 'react';
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,21 @@ export default function EditProduct() {
   const navigate = useNavigate();
   const { data: product, isLoading } = useProduct(id);
   const { updateProduct } = useProductMutations();
+  const defaultDietaryTags = Array.isArray(product?.dietary_tags)
+    ? (product.dietary_tags.filter((tag): tag is "veg" | "non_veg" | "egg" | "vegan" | "gluten_free" =>
+        ["veg", "non_veg", "egg", "vegan", "gluten_free"].includes(String(tag))
+      ))
+    : [];
+  const defaultVariants = Array.isArray(product?.variants)
+    ? (product.variants as Array<{ name: string; price: number }>)
+    : [];
+  const defaultAddons = Array.isArray(product?.addons)
+    ? (product.addons as Array<{ name: string; price: number }>)
+    : [];
+  const defaultSpicyLevel =
+    product?.spicy_level === 'mild' || product?.spicy_level === 'medium' || product?.spicy_level === 'spicy'
+      ? product.spicy_level
+      : null;
 
   const handleSubmit = async (values: any) => {
     await updateProduct.mutateAsync({ id, ...values });
@@ -78,7 +92,7 @@ export default function EditProduct() {
               category: product.category ?? "",
               subcategory: product.subcategory ?? "",
               tags: product.tags ?? "",
-              dietary_tags: product.dietary_tags ?? [],
+              dietary_tags: defaultDietaryTags,
               sku: product.sku ?? "",
               unit_of_measure: product.unit_of_measure ?? "per piece",
               allergens: product.allergens ?? "",
@@ -91,16 +105,16 @@ export default function EditProduct() {
               gst_rate: product.gst_rate ?? null,
               packaging_charge: product.packaging_charge ?? 0,
               handling_charge: product.handling_charge ?? 0,
-              variants: product.variants ?? [],
-              addons: product.addons ?? [],
+              variants: defaultVariants,
+              addons: defaultAddons,
               available_from: product.available_from ?? null,
               available_until: product.available_until ?? null,
               is_bestseller: product.is_bestseller ?? false,
               is_recommended: product.is_recommended ?? false,
               preparation_time_minutes: product.preparation_time_minutes ?? 15,
-              spicy_level: product.spicy_level ?? null,
+              spicy_level: defaultSpicyLevel,
               is_available: product.is_available ?? true,
-              image_url: product.image_url,
+              image_url: product.image_url ?? undefined,
             }}
             isLoading={updateProduct.isPending} 
           />

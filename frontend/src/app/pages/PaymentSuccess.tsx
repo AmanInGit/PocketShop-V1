@@ -122,7 +122,7 @@ export default function PaymentSuccess() {
 
   const title = useMemo(() => {
     if (state === 'paid') return 'Payment successful';
-    if (state === 'pending') return 'Payment received, confirming';
+    if (state === 'pending') return 'Payment submitted, waiting for confirmation';
     if (state === 'failed') return 'Payment confirmation delayed';
     if (state === 'missing') return 'Order not found';
     return 'Checking payment status';
@@ -133,7 +133,7 @@ export default function PaymentSuccess() {
       return 'Your payment is confirmed and order is now visible to the vendor.';
     }
     if (state === 'pending') {
-      return 'We are waiting for final webhook confirmation. This usually completes in a few seconds.';
+      return 'Your order is not confirmed yet. We are still waiting for Stripe webhook confirmation before the vendor can receive it.';
     }
     if (state === 'failed') {
       return 'We could not verify payment yet. Please open tracking to check live order status.';
@@ -168,7 +168,7 @@ export default function PaymentSuccess() {
             )}
             {orderId && (
               <Button onClick={() => navigate(`/order-tracking/${orderId}`)}>
-                Track order
+                {state === 'pending' ? 'Check payment status' : 'Track order'}
               </Button>
             )}
             <Button variant="outline" onClick={() => navigate(ROUTES.CUSTOMER_PROFILE)}>

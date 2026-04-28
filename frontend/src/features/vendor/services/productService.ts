@@ -10,7 +10,7 @@ export const getProducts = async (businessId: string) => {
   const { data, error } = await supabase
     .from('products')
     .select('*')
-    .eq('business_id', businessId)
+    .eq('vendor_id', businessId)
     .eq('is_available', true)
     .order('created_at', { ascending: true });
   return { data, error };
@@ -24,9 +24,17 @@ export const createProduct = async (productData: {
   category: string;
   preparation_time?: number;
 }) => {
+  const payload = {
+    vendor_id: productData.business_id,
+    name: productData.name,
+    description: productData.description,
+    price: productData.price,
+    category: productData.category,
+    preparation_time_minutes: productData.preparation_time,
+  };
   const { data, error } = await supabase
     .from('products')
-    .insert([productData])
+    .insert([payload])
     .select()
     .single();
   return { data, error };
@@ -62,7 +70,7 @@ export const subscribeToProducts = (
         event: '*',
         schema: 'public',
         table: 'products',
-        filter: `business_id=eq.${businessId}`,
+        filter: `vendor_id=eq.${businessId}`,
       },
       callback
     )
