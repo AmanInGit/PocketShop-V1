@@ -48,17 +48,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       sessionUser?.app_metadata?.user_type ||
       sessionUser?.app_metadata?.role;
 
-    if (metadataRole === 'customer' || metadataRole === 'vendor') {
-      return metadataRole;
-    }
+    if (metadataRole === 'vendor') return 'vendor';
+    if (metadataRole === 'customer') return 'customer';
 
-    // Phone-only OTP users are customer accounts by default.
-    if (!sessionUser?.email && sessionUser?.phone) {
-      return 'customer';
-    }
-
-    // Existing vendor login/register flows are email-based.
-    return 'vendor';
+    // Fallback: treat as customer if role metadata is missing.
+    return 'customer';
   };
 
   const mapCustomerProfileToUser = (session: Session, customerProfile: any): User => {
@@ -144,6 +138,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return customerProfile;
     } catch (err) {
       console.error('Exception loading customer profile:', err);
+      return null;
+    }
+  };
+
+  const ensureCustomerProfile = async (session: Session) => {
+    const verifiedEmail = session.user.email?.trim().toLowerCase();
+    if (!verifiedEmail) return null;
+
+    const fallbackName =
+      session.user.user_metadata?.full_name ||
+      session.user.user_metadata?.name ||
+      verifiedEmail.split('@')[0] ||
+      'Customer';
+
+    try {
+      const { data: existing, error: existingError } = await (supabase
+        .from('customer_profiles' as any)
+        .select('*')
+        .eq('user_id', session.user.id)
+        .maybeSingle()) as any;
+
+      if (existingError && existingError.code !== 'PGRST116') {
+        console.error('Error fetching customer profile:', existingError);
+        return null;
+      }
+
+      if (existing?.id) {
+        const needsEmailUpdate = (existing.email || '').trim().toLowerCase() !== verifiedEmail;
+        if (needsEmailUpdate) {
+          const { error: updateError } = await (supabase
+            .from('customer_profiles' as any)
+            .update({ email: verifiedEmail })
+            .eq('id', existing.id)) as any;
+          if (updateError) {
+            console.error('Error updating customer profile email:', updateError);
+          } else {
+            existing.email = verifiedEmail;
+          }
+        }
+        return existing;
+      }
+
+      const { data: upserted, error: upsertError } = await (supabase
+        .from('customer_profiles' as any)
+        .upsert(
+          {
+            user_id: session.user.id,
+            email: verifiedEmail,
+            name: fallbackName,
+          },
+          { onConflict: 'user_id' }
+        )
+        .select('*')
+        .maybeSingle()) as any;
+
+      if (upsertError) {
+        console.error('Error creating customer profile:', upsertError);
+        return null;
+      }
+
+      return upserted ?? null;
+    } catch (err) {
+      console.error('Exception ensuring customer profile:', err);
       return null;
     }
   };
@@ -264,6 +321,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 }
               });
             } else {
+              ensureCustomerProfile(session).then((customerProfile) => {
+                if (!mounted || !customerProfile) return;
+                setUser(mapCustomerProfileToUser(session, customerProfile));
+              });
               setOnboardingStatus(null);
             }
           } else {
@@ -354,6 +415,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               }
             });
           } else {
+            ensureCustomerProfile(session).then((customerProfile) => {
+              if (!mounted || !customerProfile) return;
+              setUser(mapCustomerProfileToUser(session, customerProfile));
+            });
             setOnboardingStatus(null);
           }
         }

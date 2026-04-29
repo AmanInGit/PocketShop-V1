@@ -31,7 +31,6 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useActiveOrders } from "@/features/vendor/hooks/useActiveOrders";
-const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 const LAST_STOREFRONT_PATH_KEY = 'pocketshop_last_storefront_path';
 
 function redirectToCheckout(url: string) {
@@ -357,18 +356,25 @@ export default function PublicStorefront() {
   // Check auth status
   const refreshCustomerAuthState = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    const customerViewAuth = localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1';
-    if (!session || !customerViewAuth) {
+    if (!session?.user) {
       setIsAuthenticated(false);
       setUserEmail("");
       return;
     }
-    const { data: customerProfile } = await supabase
+    const metadataRole =
+      session.user.user_metadata?.user_type ||
+      session.user.user_metadata?.role ||
+      session.user.app_metadata?.user_type ||
+      session.user.app_metadata?.role;
+    const { data: customerProfile, error: profileError } = await supabase
       .from('customer_profiles')
       .select('email')
       .eq('user_id', session.user.id)
       .maybeSingle();
-    const isCustomer = !!customerProfile;
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Failed to load customer profile for storefront:', profileError);
+    }
+    const isCustomer = metadataRole !== 'vendor';
     setIsAuthenticated(isCustomer);
     setUserEmail(customerProfile?.email || session.user.email || "");
   }, []);
@@ -385,7 +391,7 @@ export default function PublicStorefront() {
 
   const handleLogout = async () => {
     try {
-      localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
+      await supabase.auth.signOut();
       toast.success('Logged out from customer view');
       setIsAuthenticated(false);
       setUserEmail("");

@@ -19,8 +19,6 @@ import {
 import imgQuickBites from '@/assets/images/categories/quick-bites.png';
 import imgFineDining from '@/assets/images/categories/fine-dining.png';
 
-const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
-
 const CATEGORY_IMAGES = {
   quickBites: imgQuickBites,
   fineDining: imgFineDining,
@@ -29,8 +27,7 @@ const CATEGORY_IMAGES = {
 export default function CustomerHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const customerViewAuth = localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1';
-  const hasCustomerAccount = !!user && user.role === 'customer' && customerViewAuth;
+  const hasCustomerAccount = !!user && user.role === 'customer';
   const { getTotalItems } = useCart();
   const cartCount = getTotalItems();
 
@@ -44,9 +41,9 @@ export default function CustomerHome() {
               <Logo size="md" variant="light" />
             </Link>
             <Link
-              to={hasCustomerAccount ? ROUTES.CUSTOMER_PROFILE : ROUTES.CUSTOMER_AUTH}
+              to={ROUTES.CUSTOMER_PROFILE}
               className="touch-target shrink-0 w-11 h-11 rounded-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-slate-700 active:scale-95 transition-all"
-              aria-label={hasCustomerAccount ? 'Open profile' : 'Sign in'}
+              aria-label="Open profile"
             >
               <User className="w-5 h-5 text-gray-700 dark:text-slate-200" aria-hidden="true" />
             </Link>

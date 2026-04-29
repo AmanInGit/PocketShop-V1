@@ -8,7 +8,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
-import { getPhoneLookupCandidates, toE164Phone, toIndian10DigitPhone } from '@/features/common/utils/phone';
+import { getPhoneLookupCandidates } from '@/features/common/utils/phone';
 import Logo from '@/features/common/components/Logo';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,6 @@ import {
   Loader2,
   ShieldCheck,
 } from 'lucide-react';
-const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 
 interface OrderSummary {
   id: string;
@@ -43,19 +42,22 @@ export default function CustomerProfile() {
   const requestedTab = searchParams.get('tab');
   const activeTab = requestedTab === 'orders' || requestedTab === 'profile' ? requestedTab : 'profile';
   const { user, signOut, loading: authLoading } = useAuth();
-  const [customerViewAuth, setCustomerViewAuth] = useState<boolean>(() => localStorage.getItem(CUSTOMER_VIEW_AUTH_KEY) === '1');
   const [profile, setProfile] = useState<{ name: string; email: string | null; phone: string } | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [guestPhone, setGuestPhone] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
   const [guestOtp, setGuestOtp] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [guestPhoneVerified, setGuestPhoneVerified] = useState(false);
+  const [guestEmailVerified, setGuestEmailVerified] = useState(false);
   const [guestOrders, setGuestOrders] = useState<OrderSummary[]>([]);
   const [guestOrdersLoading, setGuestOrdersLoading] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [otpCooldown, setOtpCooldown] = useState(0);
+  const displayName = profile?.name || user?.full_name || 'Customer';
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    : null;
 
   const shouldShowInCustomerHistory = (row: { payment_method?: string | null; payment_status?: string | null }) => {
     const method = String(row.payment_method || '').toLowerCase();
@@ -65,24 +67,51 @@ export default function CustomerProfile() {
   };
 
   useEffect(() => {
-    if (!user || user.role !== 'customer' || !customerViewAuth) return;
+    if (!user || user.role !== 'customer') return;
     const loadProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
       const { data } = await supabase
         .from('customer_profiles')
-        .select('name, email, phone')
+        .select('name, email, mobile_number')
         .eq('user_id', session.user.id)
         .maybeSingle();
-      if (data) setProfile(data);
-      else {
-        localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
-        setCustomerViewAuth(false);
+      if (data) {
+        setProfile({ name: data.name, email: data.email, phone: data.mobile_number });
+        return;
+      }
+
+      const fallbackEmail = session.user.email?.trim().toLowerCase();
+      if (!fallbackEmail) {
         setProfile(null);
+        return;
+      }
+
+      const fallbackName =
+        user.full_name?.trim() ||
+        session.user.user_metadata?.full_name ||
+        session.user.user_metadata?.name ||
+        fallbackEmail.split('@')[0] ||
+        'Customer';
+
+      const { data: inserted } = await supabase
+        .from('customer_profiles')
+        .insert({
+          user_id: session.user.id,
+          name: fallbackName,
+          email: fallbackEmail,
+        } as any)
+        .select('name, email, mobile_number')
+        .single();
+
+      if (inserted) {
+        setProfile({ name: inserted.name, email: inserted.email, phone: inserted.mobile_number });
+      } else {
+        setProfile({ name: fallbackName, email: fallbackEmail, phone: '' });
       }
     };
     loadProfile();
-  }, [user, customerViewAuth]);
+  }, [user]);
 
   useEffect(() => {
     if (otpCooldown <= 0) return;
@@ -92,31 +121,29 @@ export default function CustomerProfile() {
     return () => window.clearInterval(id);
   }, [otpCooldown]);
 
-  const fetchOrdersByPhone = async (phone: string) => {
+  const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+  const isValidEmail = (email: string): boolean => /\S+@\S+\.\S+/.test(email);
+
+  const fetchOrdersByEmail = async (email: string) => {
     setGuestOrdersLoading(true);
     setGuestError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const sessionPhone = session?.user?.phone ?? null;
-      const requestedE164 = toE164Phone(phone);
+      const requestedEmail = normalizeEmail(email);
+      const sessionEmail = session?.user?.email?.trim().toLowerCase() ?? null;
 
       // Hard gate: never fetch history unless the authenticated OTP session
-      // matches the requested phone identity.
-      if (!session?.user || !requestedE164 || requestedE164 !== sessionPhone) {
+      // matches the requested email identity.
+      if (!session?.user || !requestedEmail || !sessionEmail || requestedEmail !== sessionEmail) {
         setGuestOrders([]);
         setGuestError('Session verification mismatch. Please verify OTP again.');
         return;
       }
 
-      const lookupCandidates = getPhoneLookupCandidates(phone);
-      if (lookupCandidates.length === 0) {
-        setGuestOrders([]);
-        return;
-      }
       const { data, error } = await supabase
         .from('orders')
         .select('id,total_amount,status,created_at,vendor_id,payment_method,payment_status')
-        .in('customer_phone', lookupCandidates)
+        .ilike('customer_email', requestedEmail)
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -142,7 +169,7 @@ export default function CustomerProfile() {
         }))
       );
     } catch (error: any) {
-      console.error('Failed to fetch guest orders:', error);
+      console.error('Failed to fetch guest orders by email:', error);
       setGuestError(error?.message || 'Failed to load order history');
     } finally {
       setGuestOrdersLoading(false);
@@ -151,10 +178,9 @@ export default function CustomerProfile() {
 
   const handleSendOtp = async () => {
     setGuestError(null);
-    const normalized = toIndian10DigitPhone(guestPhone) || '';
-    const e164Phone = toE164Phone(guestPhone);
-    if (!e164Phone || normalized.length !== 10) {
-      setGuestError('Enter a valid 10-digit mobile number.');
+    const requestedEmail = normalizeEmail(guestEmail);
+    if (!requestedEmail || !isValidEmail(requestedEmail)) {
+      setGuestError('Enter a valid email address.');
       return;
     }
     if (otpCooldown > 0) {
@@ -164,8 +190,7 @@ export default function CustomerProfile() {
     setIsSendingOtp(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        phone: e164Phone,
-        options: { channel: 'sms' },
+        email: requestedEmail,
       });
       if (error) throw error;
       setOtpCooldown(30);
@@ -180,33 +205,33 @@ export default function CustomerProfile() {
 
   const handleVerifyOtp = async () => {
     setGuestError(null);
-    const normalized = toIndian10DigitPhone(guestPhone) || '';
-    const e164Phone = toE164Phone(guestPhone);
-    if (!e164Phone || normalized.length !== 10) {
-      setGuestError('Enter a valid 10-digit mobile number.');
+    const requestedEmail = normalizeEmail(guestEmail);
+    if (!requestedEmail || !isValidEmail(requestedEmail)) {
+      setGuestError('Enter a valid email address.');
       return;
     }
     if (!guestOtp || guestOtp.length < 4) {
-      setGuestError('Enter the OTP sent to your phone.');
+      setGuestError('Enter the OTP sent to your email.');
       return;
     }
 
     setIsVerifyingOtp(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
-        phone: e164Phone,
+        email: requestedEmail,
         token: guestOtp.trim(),
-        type: 'sms',
+        type: 'email',
       });
       if (error) throw error;
 
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.phone || session.user.phone !== e164Phone) {
-        throw new Error('Verified session does not match requested phone');
+      const sessionEmail = session?.user?.email?.trim().toLowerCase() ?? null;
+      if (!session?.user?.email || !sessionEmail || sessionEmail !== requestedEmail) {
+        throw new Error('Verified session does not match requested email');
       }
 
-      setGuestPhoneVerified(true);
-      await fetchOrdersByPhone(e164Phone);
+      setGuestEmailVerified(true);
+      await fetchOrdersByEmail(requestedEmail);
     } catch (error: any) {
       console.error('Failed to verify OTP:', error);
       setGuestError(error?.message || 'OTP verification failed');
@@ -216,17 +241,17 @@ export default function CustomerProfile() {
   };
 
   useEffect(() => {
-    if (!user || user.role !== 'customer' || !customerViewAuth) {
+    if (!user || user.role !== 'customer') {
       setOrdersLoading(false);
       return;
     }
     const loadOrders = async () => {
       const { data: cp } = await supabase
         .from('customer_profiles')
-        .select('id, phone')
+        .select('id, mobile_number')
         .eq('user_id', user.id)
         .maybeSingle();
-      if (!cp?.id && !cp?.phone) {
+      if (!cp?.id && !cp?.mobile_number) {
         setOrdersLoading(false);
         return;
       }
@@ -252,8 +277,8 @@ export default function CustomerProfile() {
         rows = [...rows, ...(byCustomerId || [])];
       }
 
-      if (cp?.phone) {
-        const lookupCandidates = getPhoneLookupCandidates(cp.phone);
+      if (cp?.mobile_number) {
+        const lookupCandidates = getPhoneLookupCandidates(cp.mobile_number);
         if (lookupCandidates.length > 0) {
         const { data: byPhone } = await supabase
           .from('orders')
@@ -303,11 +328,9 @@ export default function CustomerProfile() {
       setOrdersLoading(false);
     };
     loadOrders();
-  }, [user, customerViewAuth]);
+  }, [user]);
 
   const handleSignOut = async () => {
-    localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
-    setCustomerViewAuth(false);
     await signOut();
     navigate(ROUTES.HOME);
   };
@@ -360,7 +383,7 @@ export default function CustomerProfile() {
           </button>
         </div>
 
-        {!user || user.role !== 'customer' || !customerViewAuth ? (
+        {!user || user.role !== 'customer' ? (
           <div className="space-y-6">
             <div className="text-center py-6 px-4">
               <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-slate-700 flex items-center justify-center mx-auto mb-4">
@@ -394,7 +417,7 @@ export default function CustomerProfile() {
             <section className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4">
               <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100 mb-2 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4" />
-                View orders by mobile number
+                View orders by email
               </h3>
               <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
                 Verify with OTP to view your past guest orders.
@@ -402,11 +425,10 @@ export default function CustomerProfile() {
 
               <div className="space-y-3">
                 <Input
-                  type="tel"
-                  placeholder="10-digit mobile number"
-                  value={guestPhone}
-                  onChange={(e) => setGuestPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  maxLength={10}
+                  type="email"
+                  placeholder="you@example.com"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
                 />
                 <div className="flex gap-2">
                   <Button
@@ -439,7 +461,7 @@ export default function CustomerProfile() {
                 )}
               </div>
 
-              {guestPhoneVerified && (
+              {guestEmailVerified && (
                 <div className="mt-4">
                   <h4 className="font-medium text-gray-900 dark:text-slate-100 mb-2">Recent orders</h4>
                   {guestOrdersLoading ? (
@@ -447,7 +469,7 @@ export default function CustomerProfile() {
                       <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
                     </div>
                   ) : guestOrders.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-slate-400">No orders found for this mobile number.</p>
+                    <p className="text-sm text-gray-500 dark:text-slate-400">No orders found for this email.</p>
                   ) : (
                     <div className="space-y-2">
                       {guestOrders.map((order) => (
@@ -478,17 +500,25 @@ export default function CustomerProfile() {
           <>
             {activeTab === 'profile' && (
               <>
+                <div className="mb-4 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 p-5 text-white shadow-sm">
+                  <p className="text-sm/5 text-orange-50">Welcome back</p>
+                  <h2 className="mt-1 text-2xl font-bold tracking-tight">{displayName}</h2>
+                  <p className="mt-1 text-sm text-orange-50">
+                    {memberSince ? `Member since ${memberSince}` : 'Your profile is ready to go.'}
+                  </p>
+                </div>
+
                 {/* Profile card */}
                 <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6 mb-6">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
                       <span className="text-2xl font-bold text-orange-600">
-                        {(profile?.name || user.full_name || 'U')[0]}
+                        {displayName[0]}
                       </span>
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">
-                        {profile?.name || user.full_name || 'Customer'}
+                        {displayName}
                       </h2>
                       {profile?.email && (
                         <p className="text-sm text-gray-600 dark:text-slate-400 flex items-center gap-2">
@@ -503,6 +533,19 @@ export default function CustomerProfile() {
                         </p>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4">
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Total Orders</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-slate-100 mt-1">{orders.length}</p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4">
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Identity Status</p>
+                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-2">
+                      Verified Account
+                    </p>
                   </div>
                 </div>
               </>

@@ -8,8 +8,9 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import Logo from '@/features/common/components/Logo';
-import { ArrowLeft, Store, MapPin } from 'lucide-react';
+import { ArrowLeft, Store, MapPin, User } from 'lucide-react';
 import { DEFAULT_SERVICE_CITY, SUPPORTED_SERVICE_CITIES } from '@/features/common/constants/serviceCities';
 import {
   Select,
@@ -51,6 +52,8 @@ export default function ShopsPage() {
   const [vendors, setVendors] = useState<VendorProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const hasCustomerAccount = !!user && user.role === 'customer';
 
   const title = category === 'fine-dining' ? 'Fine Dining' : 'Quick Bites';
   const subtitle = category === 'fine-dining'
@@ -138,7 +141,13 @@ export default function ShopsPage() {
             <Link to={ROUTES.HOME}>
               <Logo size="md" variant="light" />
             </Link>
-            <div className="w-16" />
+            <Link
+              to={hasCustomerAccount ? ROUTES.CUSTOMER_PROFILE : ROUTES.CUSTOMER_AUTH}
+              className="touch-target shrink-0 w-11 h-11 rounded-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-slate-700 active:scale-95 transition-all"
+              aria-label={hasCustomerAccount ? 'Open profile' : 'Sign in'}
+            >
+              <User className="w-5 h-5 text-gray-700 dark:text-slate-200" aria-hidden="true" />
+            </Link>
           </div>
         </div>
       </header>

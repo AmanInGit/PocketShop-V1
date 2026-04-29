@@ -1,7 +1,7 @@
 /**
- * Customer Auth – mobile OTP flow.
+ * Customer Auth – email + password flow.
  * Used when customer taps Login on storefront or accesses profile.
- * Supports: Phone OTP verification and Continue as Guest.
+ * Supports: Customer sign up / login and Continue as Guest.
  */
 
 import { useEffect, useState } from 'react';
@@ -10,11 +10,10 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { toE164Phone, toIndian10DigitPhone } from '@/features/common/utils/phone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { User, Phone, Loader2, ChevronLeft, ShieldCheck } from 'lucide-react';
+import { User, Mail, Loader2, ChevronLeft, ShieldCheck } from 'lucide-react';
 import Logo from '@/features/common/components/Logo';
 
 const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
@@ -57,16 +56,16 @@ export default function CustomerAuth() {
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localInfo, setLocalInfo] = useState<string | null>(null);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [isSignUp, setIsSignUp] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    phone: '',
-    otp: '',
+    email: '',
+    password: '',
   });
 
-  const normalizedPhone = toIndian10DigitPhone(formData.phone) || '';
-  const e164Phone = toE164Phone(formData.phone);
+  const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(formData.email);
+  const isValidEmail = (email: string): boolean => /\S+@\S+\.\S+/.test(email);
 
   useEffect(() => {
     // Skip auth page when customer is already signed in.
@@ -77,94 +76,124 @@ export default function CustomerAuth() {
     }
   }, [authLoading, user, navigate, redirect]);
 
-  const ensureCustomerProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return;
+  const ensureCustomerProfile = async (
+    authUser: { id: string; email?: string | null; user_metadata?: Record<string, any> | null },
+    preferredName?: string
+  ) => {
+    const verifiedEmail = authUser.email?.trim().toLowerCase();
+    if (!verifiedEmail) return;
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('customer_profiles')
-      .select('id, name, mobile_number')
-      .eq('user_id', session.user.id)
+      .select('id, email')
+      .eq('user_id', authUser.id)
       .maybeSingle();
 
+    if (existingError && existingError.code !== 'PGRST116') {
+      throw existingError;
+    }
+
     if (existing?.id) {
-      // Keep profile phone aligned with verified OTP phone.
-      if (e164Phone && existing.mobile_number !== e164Phone) {
-        await supabase
+      // Ensure stored email matches the authenticated email.
+      if (existing.email?.trim().toLowerCase() !== verifiedEmail) {
+        const { error: updateError } = await supabase
           .from('customer_profiles')
-          .update({ mobile_number: e164Phone, phone_verified: true })
+          .update({ email: verifiedEmail })
           .eq('id', existing.id);
+        if (updateError) throw updateError;
       }
       return;
     }
 
-    await supabase.from('customer_profiles').insert({
-      user_id: session.user.id,
-      name: formData.name.trim() || 'Customer',
-      mobile_number: e164Phone,
-      email: session.user.email || null,
-      phone_verified: true,
-    });
+    const derivedName =
+      preferredName?.trim() ||
+      authUser.user_metadata?.full_name ||
+      authUser.user_metadata?.name ||
+      verifiedEmail.split('@')[0] ||
+      'Customer';
+
+    // Create row (or heal race conditions) using user_id as conflict target.
+    const { error: upsertError } = await supabase.from('customer_profiles').upsert(
+      {
+        user_id: authUser.id,
+        name: derivedName,
+        email: verifiedEmail,
+      } as any,
+      { onConflict: 'user_id' }
+    );
+    if (upsertError) throw upsertError;
   };
 
-  const handleSendOtp = async (e?: React.SyntheticEvent) => {
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (loading) return;
     setLocalError(null);
     setLocalInfo(null);
-    if (otpCooldown > 0) {
-      setLocalError(`Please wait ${otpCooldown}s before requesting new OTP`);
+
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+      setLocalError('Please enter a valid email address');
       return;
     }
-    if (!e164Phone || normalizedPhone.length !== 10) {
-      setLocalError('Please enter a valid 10-digit mobile number');
+    if (!formData.password || formData.password.length < 6) {
+      setLocalError('Password must be at least 6 characters long');
       return;
     }
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: e164Phone,
-        options: { channel: 'sms' },
-      });
-      if (error) throw error;
-      setOtpSent(true);
-      setOtpCooldown(30);
-      setLocalInfo(`OTP sent to ${e164Phone}`);
-    } catch (error: any) {
-      setLocalError(error?.message || 'Failed to send OTP');
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password: formData.password,
+          options: {
+            data: {
+              role: 'customer',
+              user_type: 'customer',
+              full_name: formData.name.trim() || undefined,
+            },
+          },
+        });
 
-  const handleVerifyOtp = async (e?: React.SyntheticEvent) => {
-    e?.preventDefault();
-    if (loading) return;
-    setLocalError(null);
-    setLocalInfo(null);
-    if (!e164Phone || normalizedPhone.length !== 10) {
-      setLocalError('Please enter a valid 10-digit mobile number');
-      return;
-    }
-    if (!formData.otp || formData.otp.trim().length < 4) {
-      setLocalError('Please enter the OTP sent to your phone');
-      return;
-    }
+        if (error) {
+          setLocalError(error.message || 'Sign up failed');
+          return;
+        }
 
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        phone: e164Phone,
-        token: formData.otp.trim(),
-        type: 'sms',
-      });
-      if (error) throw error;
-      localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '1');
-      await ensureCustomerProfile();
-      navigate(redirect);
+        if (data.user && !data.session) {
+          setLocalInfo('Please check your email to confirm your account');
+          return;
+        }
+
+        localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '1');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          setLocalError('Authentication session not established. Please try logging in.');
+          return;
+        }
+        await ensureCustomerProfile(session.user, formData.name);
+        navigate(redirect);
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: formData.password,
+        });
+
+        if (error) {
+          setLocalError(error.message || 'Login failed');
+          return;
+        }
+
+        localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '1');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          setLocalError('Authentication session not established. Please try again.');
+          return;
+        }
+        await ensureCustomerProfile(session.user);
+        navigate(redirect);
+      }
     } catch (error: any) {
-      setLocalError(error?.message || 'OTP verification failed');
+      setLocalError(error?.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -174,15 +203,6 @@ export default function CustomerAuth() {
     localStorage.setItem(CUSTOMER_VIEW_AUTH_KEY, '0');
     navigate(redirect);
   };
-
-  // cooldown timer
-  useEffect(() => {
-    if (otpCooldown <= 0) return;
-    const id = window.setInterval(() => {
-      setOtpCooldown((s) => Math.max(0, s - 1));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [otpCooldown]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
@@ -206,12 +226,16 @@ export default function CustomerAuth() {
       </header>
 
       <main className="flex-1 px-4 py-6 pb-8 max-w-md mx-auto w-full">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1">Verify your mobile</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1">
+          {isSignUp ? 'Create your account' : 'Sign in to continue'}
+        </h1>
         <p className="text-gray-600 dark:text-slate-400 text-sm mb-6">
-          Use OTP to sign in and access your order history.
+          {isSignUp
+            ? 'Sign up with your email to track orders and save your details.'
+            : 'Use your email and password to access your order history.'}
         </p>
 
-        <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {localError && (
             <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm">
               {localError}
@@ -224,56 +248,54 @@ export default function CustomerAuth() {
             </div>
           )}
 
-          <div>
-            <Label htmlFor="name" className="text-gray-700">Name (optional)</Label>
-            <div className="relative mt-1">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <Input
-                id="name"
-                type="text"
-                placeholder="Your name"
-                value={formData.name}
-                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                className="pl-11 h-12 text-base"
-                autoComplete="name"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="phone" className="text-gray-700">Mobile Number</Label>
-            <div className="relative mt-1">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="10-digit mobile number"
-                value={formData.phone}
-                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                className="pl-11 h-12 text-base"
-                autoComplete="tel"
-                required
-                maxLength={10}
-                disabled={otpSent}
-              />
-            </div>
-          </div>
-
-          {otpSent && (
+          {isSignUp && (
             <div>
-              <Label htmlFor="otp" className="text-gray-700">OTP</Label>
-              <Input
-                id="otp"
-                type="text"
-                placeholder="Enter OTP"
-                value={formData.otp}
-                onChange={(e) => setFormData((p) => ({ ...p, otp: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-                className="h-12 text-base"
-                required
-                maxLength={6}
-              />
+              <Label htmlFor="name" className="text-gray-700">Name (optional)</Label>
+              <div className="relative mt-1">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Your name"
+                  value={formData.name}
+                  onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                  className="pl-11 h-12 text-base"
+                  autoComplete="name"
+                />
+              </div>
             </div>
           )}
+
+          <div>
+            <Label htmlFor="email" className="text-gray-700">Email Address</Label>
+            <div className="relative mt-1">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={formData.email}
+                onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                className="pl-11 h-12 text-base"
+                autoComplete="email"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="password" className="text-gray-700">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="Your password"
+              value={formData.password}
+              onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))}
+              className="h-12 text-base"
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
+              required
+            />
+          </div>
 
           <Button
             type="submit"
@@ -282,19 +304,22 @@ export default function CustomerAuth() {
           >
             {loading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
-            ) : otpSent ? 'Verify OTP' : 'Send OTP'}
+            ) : isSignUp ? 'Sign Up' : 'Log In'}
           </Button>
-          {otpSent && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full h-12 min-h-[48px] text-base touch-target mt-2"
-              disabled={otpCooldown > 0 || loading}
-              onClick={handleSendOtp}
-            >
-              {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
-            </Button>
-          )}
+
+          <button
+            type="button"
+            className="w-full text-center text-sm text-gray-600 dark:text-slate-400 hover:underline mt-1"
+            onClick={() => {
+              setIsSignUp((prev) => !prev);
+              setLocalError(null);
+              setLocalInfo(null);
+            }}
+          >
+            {isSignUp
+              ? 'Already have an account? Log in'
+              : "Don't have an account? Sign up"}
+          </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-200">
