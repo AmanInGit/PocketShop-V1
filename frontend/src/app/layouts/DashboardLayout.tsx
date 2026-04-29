@@ -261,21 +261,27 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({ children }) => {
 
         {/* Profile incomplete banner - always visible when profile &lt; 100% */}
         {!canGoOnline && (
-          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/50 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Profile incomplete ({percentage}%)
-              </span>
-              <span className="text-xs text-amber-700 dark:text-amber-300 truncate">
-                {missingRequired.length > 0 && `Missing: ${missingRequired.slice(0, 3).join(', ')}${missingRequired.length > 3 ? '…' : ''}`}
-              </span>
+          <div
+            className={`bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/50 transition-[padding] duration-300 ${
+              isSidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-64'
+            }`}
+          >
+            <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Profile incomplete ({percentage}%)
+                </span>
+                <span className="text-xs text-amber-700 dark:text-amber-300 truncate">
+                  {missingRequired.length > 0 && `Missing: ${missingRequired.slice(0, 3).join(', ')}${missingRequired.length > 3 ? '…' : ''}`}
+                </span>
+              </div>
+              <button
+                onClick={() => navigate(ROUTES.VENDOR_DASHBOARD_SETTINGS)}
+                className="text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline underline-offset-2 shrink-0"
+              >
+                Finish setup →
+              </button>
             </div>
-            <button
-              onClick={() => navigate(ROUTES.VENDOR_DASHBOARD_SETTINGS)}
-              className="text-sm font-medium text-amber-800 dark:text-amber-200 hover:underline underline-offset-2 shrink-0"
-            >
-              Finish setup →
-            </button>
           </div>
         )}
 

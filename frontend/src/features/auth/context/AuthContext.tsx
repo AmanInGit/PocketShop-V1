@@ -36,6 +36,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatusValue | null>(null);
 
+  const isRateLimitError = (authError: any): boolean => {
+    const message = String(authError?.message || '').toLowerCase();
+    return authError?.status === 429 || message.includes('rate limit') || message.includes('email rate limit exceeded');
+  };
+
   const resolveUserRole = (sessionUser: any): 'vendor' | 'customer' => {
     const metadataRole =
       sessionUser?.user_metadata?.user_type ||
@@ -387,6 +392,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       if (error) {
+        // Surface rate-limit errors as real temporary failures (not partial success).
+        if (isRateLimitError(error)) {
+          setError(error.message || 'Too many signup attempts. Please wait before trying again.');
+          return { data: null, error };
+        }
+
         setError(error.message);
         return { data: null, error };
       }
@@ -395,6 +406,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // If trigger fails, the profile will be created on next login attempt by AuthContext useEffect
       return { data, error: null };
     } catch (err) {
+      if (isRateLimitError(err)) {
+        const rateLimitMessage = String((err as any)?.message || 'Too many signup attempts. Please wait before trying again.');
+        setError(rateLimitMessage);
+        return { data: null, error: err };
+      }
+
       const errorMessage = 'An unexpected error occurred during signup';
       setError(errorMessage);
       return { data: null, error: { message: errorMessage } };

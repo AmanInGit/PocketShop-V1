@@ -135,17 +135,37 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [isRegistrationSuccess, setIsRegistrationSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState<string>('');
   const [registerSuccessMessage, setRegisterSuccessMessage] = useState(
-    'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+    'Registration successful! A confirmation email has been sent to your inbox. Please check your email to verify your account.'
   );
+  const [cooldownTime, setCooldownTime] = useState<number>(0);
+
+  useEffect(() => {
+    if (cooldownTime <= 0) return;
+    const timer = window.setInterval(() => {
+      setCooldownTime((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownTime]);
+
+  const isRegisterRateLimited = cooldownTime > 0;
+
+  const isRateLimitError = (signupError: any): boolean => {
+    const message = String(signupError?.message || '').toLowerCase();
+    return signupError?.status === 429 || message.includes('rate limit') || message.includes('email rate limit exceeded');
+  };
 
   const resetRegisterFlow = () => {
     setRegisterStep(1);
     setErrors({});
     setEmailSent(false);
+    setIsRegistrationSuccess(false);
+    setRegisteredEmail('');
+    setCooldownTime(0);
     setRegisterSuccessMessage(
-      'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+      'Registration successful! A confirmation email has been sent to your inbox. Please check your email to verify your account.'
     );
   };
 
@@ -260,6 +280,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
     setIsSubmitting(true);
     setErrors({});
     setEmailSent(false);
+    setIsRegistrationSuccess(false);
 
     try {
       console.log('[Register] Starting registration for:', registerFormData.email);
@@ -276,20 +297,18 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
 
       if (error) {
         console.error('[Register] Registration error:', error);
-        const errorMessage = String(error.message || '').toLowerCase();
-
-        if (errorMessage.includes('email rate limit exceeded')) {
-          setRegisteredEmail(registerFormData.email);
-          setRegisterSuccessMessage(
-            'A confirmation email was already sent recently. Please check your inbox and confirm your email before trying again.'
-          );
-          setEmailSent(true);
-          setIsSubmitting(false);
+        if (isRateLimitError(error)) {
+          const errorMessage = String(error?.message || '');
+          const secondsMatch = errorMessage.match(/(\d+)\s*second/i);
+          const retrySeconds = secondsMatch ? Number(secondsMatch[1]) : 60;
+          setCooldownTime(retrySeconds);
+          setErrors({
+            submit: 'Too many signup attempts. Please wait before trying again.',
+          });
           return;
         }
 
         setErrors({ submit: error.message });
-        setIsSubmitting(false);
         return;
       }
 
@@ -312,9 +331,10 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
           // Email confirmation required - show confirmation UI
           setRegisteredEmail(registerFormData.email);
           setRegisterSuccessMessage(
-            'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+            'Registration successful! A confirmation email has been sent to your inbox. Please check your email to verify your account.'
           );
           setEmailSent(true);
+          setIsRegistrationSuccess(true);
           // Clear form data
           setRegisterFormData({
             businessName: '',
@@ -338,9 +358,10 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
         console.log('[Register] No user data, assuming email sent');
         setRegisteredEmail(registerFormData.email);
         setRegisterSuccessMessage(
-          'A confirmation email has been sent to your inbox. Please check your inbox and confirm your email to continue.'
+          'Registration successful! A confirmation email has been sent to your inbox. Please check your email to verify your account.'
         );
         setEmailSent(true);
+        setIsRegistrationSuccess(true);
         // Clear form data
         setRegisterFormData({
           businessName: '',
@@ -352,6 +373,16 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
       }
     } catch (err: any) {
       console.error('[Register] Unexpected error:', err);
+      if (isRateLimitError(err)) {
+        const errorMessage = String(err?.message || '');
+        const secondsMatch = errorMessage.match(/(\d+)\s*second/i);
+        const retrySeconds = secondsMatch ? Number(secondsMatch[1]) : 60;
+        setCooldownTime(retrySeconds);
+        setErrors({
+          submit: 'Too many signup attempts. Please wait before trying again.',
+        });
+        return;
+      }
       setErrors({ submit: err.message || 'An unexpected error occurred. Please try again.' });
     } finally {
       setIsSubmitting(false);
@@ -527,31 +558,39 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                   </div>
                 )}
 
-                {mode === 'register' && emailSent && registeredEmail && (
+                {mode === 'register' && isRegistrationSuccess && emailSent && (
                   <div
                     className="register-success-modal"
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="register-success-title"
                   >
-                    <div className="register-success-modal__backdrop" onClick={() => setEmailSent(false)} />
+                    <div className="register-success-modal__backdrop" />
                     <div className="register-success-modal__content">
                       <div className="register-success-modal__icon">
                         <Mail />
                       </div>
                       <h2 id="register-success-title" className="register-success-modal__title">
-                        Confirmation Email Sent
+                        Registration successful
                       </h2>
                       <p className="register-success-modal__text">
-                        {registerSuccessMessage} <strong>{registeredEmail}</strong>.
+                        {registerSuccessMessage}
+                        {registeredEmail && <> <strong>{registeredEmail}</strong>.</>}
                       </p>
                       <div className="register-success-modal__actions">
                         <button
                           type="button"
                           className="btn submit-btn register-success-modal__secondary"
-                          onClick={() => setEmailSent(false)}
+                          onClick={() => {
+                            setEmailSent(false);
+                            setIsRegistrationSuccess(false);
+                            setMode('login');
+                            navigate(ROUTES.LOGIN, {
+                              state: { message: 'confirm_email' },
+                            });
+                          }}
                         >
-                          Close
+                          Go to Login
                         </button>
                         <button
                           type="button"
@@ -564,7 +603,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                             });
                           }}
                         >
-                          Go to Login
+                          Continue to Login
                         </button>
                       </div>
                     </div>
@@ -572,7 +611,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                 )}
 
                 {/* Register Form */}
-                {mode === 'register' && (
+                {mode === 'register' && !isRegistrationSuccess && (
                   <form onSubmit={handleRegisterSubmit} className="auth-form">
                     <div className="step-indicator">
                       <div className={`step-dot ${registerStep === 1 ? 'active' : ''}`}>1</div>
@@ -766,13 +805,18 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
                           <button
                             type="submit"
                             className="btn btn-primary btn-lg submit-btn"
-                            disabled={isSubmitting}
+                          disabled={isSubmitting || isRegisterRateLimited}
                           >
-                            {isSubmitting ? (
+                          {isSubmitting ? (
                               <>
                                 <Loader2 className="btn-icon spinning" />
                                 Creating...
                               </>
+                          ) : isRegisterRateLimited ? (
+                            <>
+                              <Loader2 className="btn-icon" />
+                              Retry in {cooldownTime}s
+                            </>
                             ) : (
                               <>
                                 <UserPlus className="btn-icon" />
