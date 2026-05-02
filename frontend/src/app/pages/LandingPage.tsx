@@ -8,11 +8,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Download, X, Lock } from 'lucide-react';
-import { ROUTES } from '@/constants/routes';
+import { ROUTES, storefrontPath } from '@/constants/routes';
 import { useBestOffer } from '@/hooks/useBestOffer';
+import { OffersCarousel } from '@/components/marketing/OffersCarousel';
 import { GOOGLE_MAPS_LIBRARIES } from '@/constants/maps';
 import { useLoadScript } from '@react-google-maps/api';
-import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
 import Logo from '@/features/common/components/Logo';
 import LocationDetector, { LocationDetectorRef } from '@/features/common/components/LocationDetector';
 import PlacesAutocomplete from '@/features/common/components/PlacesAutocomplete';
@@ -34,7 +34,6 @@ const CATEGORY_IMAGES = {
   localStores: imgLocalStores,
 } as const;
 
-
 const LandingPage: React.FC = () => {
   const [searchLocation, setSearchLocation] = useState('');
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -51,29 +50,6 @@ const LandingPage: React.FC = () => {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const navigate = useNavigate();
   const { landingOffers, isLoading: bestOfferLoading } = useBestOffer();
-  const [carouselApi, setCarouselApi] = useState<any>(null);
-  const [isCarouselPaused, setIsCarouselPaused] = useState(false);
-
-  useEffect(() => {
-    if (!carouselApi) return;
-    if (landingOffers.length <= 2) return;
-    if (isCarouselPaused) return;
-
-    const intervalId = window.setInterval(() => {
-      // Auto-advance: show next pair (with 2-wide viewport) by scrolling one slide.
-      if (carouselApi.canScrollNext && carouselApi.canScrollNext()) {
-        carouselApi.scrollNext();
-        return;
-      }
-
-      // If we reached the end, restart from the beginning to keep rotation going.
-      if (carouselApi.scrollTo) {
-        carouselApi.scrollTo(0);
-      }
-    }, 3500);
-
-    return () => window.clearInterval(intervalId);
-  }, [carouselApi, landingOffers.length, isCarouselPaused]);
 
   const clearLocation = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -784,7 +760,7 @@ const LandingPage: React.FC = () => {
                       on purchase above ₹{landingOffers[0].offer.min_order.toLocaleString('en-IN')}
                     </p>
                     <Link
-                      to={`/storefront/${landingOffers[0].vendorId}`}
+                      to={storefrontPath(landingOffers[0].vendorId)}
                       className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg"
                     >
                       Explore now
@@ -793,55 +769,7 @@ const LandingPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <Carousel
-                opts={{ align: 'start', loop: true }}
-                className="w-full"
-                setApi={setCarouselApi}
-                onMouseEnter={() => setIsCarouselPaused(true)}
-                onMouseLeave={() => setIsCarouselPaused(false)}
-              >
-                <CarouselContent className="ml-0">
-                  {landingOffers.map((offerCard) => (
-                    <CarouselItem
-                      key={`${offerCard.vendorId}-${offerCard.offer.id}`}
-                      className="basis-1/2 px-2"
-                    >
-                      <div className="h-full rounded-3xl border border-purple-100 bg-gradient-to-br from-white to-purple-50 p-4 sm:p-6 md:p-7 shadow-md">
-                        <div className="mb-3 flex items-center gap-3">
-                          {offerCard.vendorLogoUrl ? (
-                            <img
-                              src={offerCard.vendorLogoUrl}
-                              alt={offerCard.vendorName}
-                              className="h-12 w-12 rounded-lg object-cover"
-                            />
-                          ) : (
-                            <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-500 text-white flex items-center justify-center font-semibold">
-                              {offerCard.vendorName.slice(0, 2).toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{offerCard.vendorName}</p>
-                          </div>
-                        </div>
-                        <p className="text-2xl font-extrabold text-gray-900 leading-tight">
-                          {offerCard.offer.type === 'flat'
-                            ? `Flat ₹${offerCard.offer.value} off`
-                            : `${offerCard.offer.value}% off${offerCard.offer.max_discount ? ` up to ₹${offerCard.offer.max_discount}` : ''}`}
-                        </p>
-                        <p className="mt-2 text-xs text-gray-600">
-                          Min order ₹{offerCard.offer.min_order.toLocaleString('en-IN')}
-                        </p>
-                        <Link
-                          to={`/storefront/${offerCard.vendorId}`}
-                          className="mt-4 inline-flex rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
-                        >
-                          View Offer
-                        </Link>
-                      </div>
-                    </CarouselItem>
-                  ))}
-                </CarouselContent>
-              </Carousel>
+              <OffersCarousel landingOffers={landingOffers} variant="landing" />
             )}
           </div>
         </section>

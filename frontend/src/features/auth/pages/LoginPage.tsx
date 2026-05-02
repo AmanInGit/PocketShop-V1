@@ -77,7 +77,10 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
   }, [mode]);
 
   // Helper function to determine redirect path after login
-  const getRedirectPath = async (userId: string): Promise<string> => {
+  const getRedirectPath = async (
+    userId: string,
+    sessionUser?: { user_metadata?: Record<string, unknown>; app_metadata?: Record<string, unknown> } | null
+  ): Promise<string> => {
     // Check if we have a "from" location in state (from ProtectedRoute redirect)
     const from = (location.state as any)?.from?.pathname;
     
@@ -93,7 +96,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
     // Otherwise, check onboarding status and redirect accordingly
     try {
       const { getOnboardingRedirectPath } = await import('@/features/common/utils/onboardingCheck');
-      const redirectPath = await getOnboardingRedirectPath(userId);
+      const redirectPath = await getOnboardingRedirectPath(userId, sessionUser ?? null);
       
       // Preload the target route based on redirect path
       if (redirectPath.startsWith(ROUTES.VENDOR_DASHBOARD)) {
@@ -348,7 +351,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
         } else {
           // User is already confirmed, redirect using same logic as login
           console.log('[Register] User already confirmed, redirecting...');
-          const redirectPath = await getRedirectPath(data.user.id);
+          const redirectPath = await getRedirectPath(data.user.id, data.user);
           console.log('[Register] Redirecting to:', redirectPath);
           // Preload is already handled in getRedirectPath
           navigate(redirectPath, { replace: true });
@@ -406,7 +409,7 @@ const VendorAuth: React.FC<VendorAuthProps> = ({ mode: initialMode }) => {
       } else if (data?.user) {
         // Get redirect path (checks location state first, then onboarding status)
         // Preload is already handled in getRedirectPath
-        const redirectPath = await getRedirectPath(data.user.id);
+        const redirectPath = await getRedirectPath(data.user.id, data.user);
         console.log('Redirecting after login to:', redirectPath);
         navigate(redirectPath, { replace: true });
       } else {

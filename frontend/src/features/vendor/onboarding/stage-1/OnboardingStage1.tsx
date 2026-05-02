@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useOnboarding } from '@/features/vendor/context/OnboardingContext';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
@@ -6,12 +6,37 @@ import { ROUTES } from '@/constants/routes';
 import { preloadNextOnboardingStage } from '@/utils/preloaders';
 import { InputField } from '@/features/common/components/shared/InputField';
 import { StageIndicator } from '@/features/common/components/shared/StageIndicator';
+import { uploadVendorAsset } from '@/features/common/utils/storage';
 
 const OnboardingStage1: React.FC = () => {
-  const { data, updateData, completeStage, nextStage } = useOnboarding();
+  const { data, updateData } = useOnboarding();
   const { user, setOnboardingStatus } = useAuth();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [bannerObjectUrl, setBannerObjectUrl] = useState<string | null>(null);
+  const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!bannerFile) {
+      setBannerObjectUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(bannerFile);
+    setBannerObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [bannerFile]);
+
+  useEffect(() => {
+    if (!logoFile) {
+      setLogoObjectUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(logoFile);
+    setLogoObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [logoFile]);
 
   const handleNext = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,6 +215,50 @@ const OnboardingStage1: React.FC = () => {
         }
       }
 
+      const imageUpdates: Record<string, string> = {};
+      if (bannerFile) {
+        const bannerResult = await uploadVendorAsset(bannerFile, 'banner');
+        if (!bannerResult) {
+          setErrors({
+            submit:
+              'Could not upload your restaurant cover photo. Use JPEG, PNG, WebP, or GIF under 5MB, or clear the file and try again.',
+          });
+          setIsLoading(false);
+          return;
+        }
+        imageUpdates.banner_url = bannerResult.url;
+      }
+      if (logoFile) {
+        const logoResult = await uploadVendorAsset(logoFile, 'logo');
+        if (!logoResult) {
+          setErrors({
+            submit:
+              'Could not upload your logo. Use JPEG, PNG, WebP, or GIF under 5MB, or clear the file and try again.',
+          });
+          setIsLoading(false);
+          return;
+        }
+        imageUpdates.logo_url = logoResult.url;
+      }
+
+      if (Object.keys(imageUpdates).length > 0) {
+        const { error: imgUpdateError } = await (supabase
+          .from('vendor_profiles' as any)
+          .update({
+            ...imageUpdates,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user.id)) as any;
+
+        if (imgUpdateError) {
+          setErrors({
+            submit: `Profile saved but images could not be updated: ${imgUpdateError.message}. Try again or continue without new photos.`,
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+
       // Step 3: Preload next stage for faster navigation
       console.log('[OnboardingStage1] Preloading stage 2...');
       preloadNextOnboardingStage(1).catch(console.error);
@@ -302,6 +371,76 @@ const OnboardingStage1: React.FC = () => {
                   <p className="text-sm text-[#E83935] mt-1">{errors.businessCategory}</p>
                 )}
               </div>
+
+            <div>
+              <h2 className="text-base font-semibold text-[#111827]">Restaurant photos (optional)</h2>
+              <p className="mt-1 text-sm text-[#6B7280]">
+                Cover photo and logo appear when customers browse your café or restaurant. JPEG, PNG, WebP, or GIF,
+                max 5MB each.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-6 mt-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#6B7280] uppercase tracking-wide">
+                    Cover photo
+                  </label>
+                  <div className="relative rounded-lg border border-[#E5E7EB] bg-[#F3F4F6] aspect-video max-h-44 overflow-hidden flex items-center justify-center">
+                    {bannerObjectUrl || data.bannerUrl ? (
+                      <img
+                        src={bannerObjectUrl || data.bannerUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm text-[#9CA3AF] px-3 text-center">No cover yet</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="block w-full text-sm text-[#374151] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#5522E2] file:text-white file:font-medium"
+                    onChange={(e) => setBannerFile(e.target.files?.[0] ?? null)}
+                  />
+                  {bannerFile ? (
+                    <button
+                      type="button"
+                      className="text-sm text-[#5522E2] font-medium hover:underline"
+                      onClick={() => setBannerFile(null)}
+                    >
+                      Clear selected file
+                    </button>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#6B7280] uppercase tracking-wide">Logo</label>
+                  <div className="relative rounded-lg border border-[#E5E7EB] bg-[#F3F4F6] w-36 h-36 mx-auto sm:mx-0 overflow-hidden flex items-center justify-center">
+                    {logoObjectUrl || data.logoUrl ? (
+                      <img
+                        src={logoObjectUrl || data.logoUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm text-[#9CA3AF] px-2 text-center">No logo yet</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="block w-full text-sm text-[#374151] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#5522E2] file:text-white file:font-medium"
+                    onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+                  />
+                  {logoFile ? (
+                    <button
+                      type="button"
+                      className="text-sm text-[#5522E2] font-medium hover:underline"
+                      onClick={() => setLogoFile(null)}
+                    >
+                      Clear selected file
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
 
             {/* Error message */}
             {errors.submit && (

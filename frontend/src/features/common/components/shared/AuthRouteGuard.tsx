@@ -80,7 +80,7 @@ export const AuthRouteGuard: React.FC<AuthRouteGuardProps> = ({ children }) => {
       // Step 3: Email confirmed → always validate from DB (no cache) so redirect is correct
       setCheckingOnboarding(true);
       try {
-        const path = await getOnboardingRedirectPath(user.id);
+        const path = await getOnboardingRedirectPath(user.id, session.user);
         if (mounted) setRedirectPath(path);
       } catch (err) {
         console.error('[AuthRouteGuard] Error determining redirect path:', err);

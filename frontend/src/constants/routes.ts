@@ -70,6 +70,15 @@ export const ROUTES = {
   NOT_FOUND: '*',
 } as const;
 
+/** Canonical path to a vendor's public menu / storefront. */
+export function storefrontPath(vendorId: string, query?: Record<string, string>): string {
+  const id = encodeURIComponent(vendorId);
+  const base = `/storefront/${id}`;
+  if (!query || Object.keys(query).length === 0) return base;
+  const q = new URLSearchParams(query).toString();
+  return `${base}?${q}`;
+}
+
 // Type for route paths
 export type RoutePath = typeof ROUTES[keyof typeof ROUTES];
 

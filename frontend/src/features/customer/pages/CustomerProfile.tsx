@@ -564,7 +564,7 @@ export default function CustomerProfile() {
                   <Package className="w-12 h-12 text-gray-300 dark:text-slate-600 mx-auto mb-2" />
                   <p className="text-gray-600 dark:text-slate-400">No orders yet</p>
                   <Link
-                    to={ROUTES.SHOPS}
+                    to={ROUTES.CUSTOMER_HOME}
                     className="inline-block mt-3 text-orange-600 font-medium"
                   >
                     Browse shops

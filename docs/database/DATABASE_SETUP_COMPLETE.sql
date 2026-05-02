@@ -304,13 +304,7 @@ USING (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Customers can insert own profile" ON public.customer_profiles;
 CREATE POLICY "Customers can insert own profile"
 ON public.customer_profiles FOR INSERT
-WITH CHECK (
-  auth.uid() = user_id
-  AND EXISTS (
-    SELECT 1 FROM public.user_roles
-    WHERE user_id = auth.uid() AND role = 'customer'
-  )
-);
+WITH CHECK (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Customers can update own profile" ON public.customer_profiles;
 CREATE POLICY "Customers can update own profile"
@@ -467,6 +461,12 @@ DROP POLICY IF EXISTS "Public can view roles" ON public.user_roles;
 CREATE POLICY "Public can view roles"
 ON public.user_roles FOR SELECT
 USING (TRUE);
+
+DROP POLICY IF EXISTS "Users can create their own role" ON public.user_roles;
+CREATE POLICY "Users can create their own role"
+ON public.user_roles FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================================
 -- VERIFICATION QUERIES

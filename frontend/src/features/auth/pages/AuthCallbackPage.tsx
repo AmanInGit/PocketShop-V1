@@ -116,12 +116,12 @@ export default function AuthCallbackPage() {
       console.log('[OAuth Callback] Has access_token:', hasAccessToken, 'Has code:', hasCode, 'Has tokens:', hasTokens);
     }
 
-    const redirectToApp = async (userId: string) => {
+    const redirectToApp = async (session: { user: { id: string; user_metadata?: Record<string, unknown>; app_metadata?: Record<string, unknown> } }) => {
       if (hasRedirected || !mounted) return;
       hasRedirected = true;
-      if (isDev) console.log('[OAuth Callback] Redirecting user:', userId);
+      if (isDev) console.log('[OAuth Callback] Redirecting user:', session.user.id);
       try {
-        const path = await getOnboardingRedirectPath(userId);
+        const path = await getOnboardingRedirectPath(session.user.id, session.user);
         if (isDev) console.log('[OAuth Callback] Redirect path:', path);
         if (mounted) navigate(path, { replace: true });
       } catch (err) {
@@ -130,10 +130,10 @@ export default function AuthCallbackPage() {
       }
     };
 
-    const handleSession = (session: { user: { id: string } } | null) => {
+    const handleSession = (session: { user: { id: string; user_metadata?: Record<string, unknown>; app_metadata?: Record<string, unknown> } } | null) => {
       if (!mounted || !session?.user || hasRedirected) return;
       if (isDev) console.log('[OAuth Callback] Session found:', session.user.id);
-      redirectToApp(session.user.id);
+      redirectToApp(session);
     };
 
     // 1. Listen for auth state changes – Supabase emits when it finishes processing OAuth

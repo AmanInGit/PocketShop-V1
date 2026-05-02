@@ -1,16 +1,13 @@
 /**
- * Shops Page – Browse online vendors for ordering.
- * Shown when user clicks Quick Bites or Fine Dining from the landing page.
- * Displays vendors as cards; clicking navigates to their storefront.
+ * Shops Page – Browse online vendors for ordering (Quick Bites / Fine Dining).
+ * UI aligned with Customer Home: same header pattern and restaurant cards.
  */
 
-import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '@/lib/supabaseClient';
-import { ROUTES } from '@/constants/routes';
+import { ROUTES, storefrontPath } from '@/constants/routes';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import Logo from '@/features/common/components/Logo';
-import { ArrowLeft, Store, MapPin, User } from 'lucide-react';
+import { ChevronLeft, MapPin, Store, User } from 'lucide-react';
 import { DEFAULT_SERVICE_CITY, SUPPORTED_SERVICE_CITIES } from '@/features/common/constants/serviceCities';
 import {
   Select,
@@ -19,29 +16,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  useShopsVendors,
+  CITY_QUERY_PARAM,
+  CITY_STORAGE_KEY,
+  normalizeCity,
+} from '@/hooks/useShopsVendors';
+import { RestaurantVendorCard } from '@/components/shops/RestaurantVendorCard';
 
-interface VendorProfile {
-  id: string;
-  business_name: string;
-  business_type: string | null;
-  description: string | null;
-  logo_url: string | null;
-  banner_url: string | null;
-  address: string | null;
-  city: string | null;
-  is_active: boolean;
+function getInitials(fullName: string | undefined, email: string | undefined): string {
+  const n = (fullName || '').trim();
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return n.slice(0, 2).toUpperCase();
+  }
+  const local = (email?.split('@')[0] || '?').slice(0, 2);
+  return local.toUpperCase();
 }
 
-// Map category slug to business types/categories we consider matching
-const CATEGORY_FILTERS: Record<string, string[]> = {
-  'quick-bites': ['cafe', 'fast-food', 'bakery', 'chinese', 'indian', 'italian', 'desserts'],
-  'fine-dining': ['restaurant', 'italian', 'indian'],
-};
-
-const CITY_QUERY_PARAM = 'city';
-const CITY_STORAGE_KEY = 'shops:selected-city';
-
-const normalizeCity = (value: string | null | undefined) => (value || '').trim().toLowerCase();
+function firstName(fullName: string | undefined, email: string | undefined): string {
+  const n = (fullName || '').trim();
+  if (n) return n.split(/\s+/)[0] || n;
+  return (email?.split('@')[0] || 'there').trim();
+}
 
 export default function ShopsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -49,16 +47,16 @@ export default function ShopsPage() {
   const cityFromUrl = normalizeCity(searchParams.get(CITY_QUERY_PARAM));
   const cityFromStorage = normalizeCity(localStorage.getItem(CITY_STORAGE_KEY));
   const selectedCity = cityFromUrl || cityFromStorage || DEFAULT_SERVICE_CITY;
-  const [vendors, setVendors] = useState<VendorProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { vendors, loading } = useShopsVendors(selectedCity, category);
   const navigate = useNavigate();
   const { user } = useAuth();
   const hasCustomerAccount = !!user && user.role === 'customer';
 
   const title = category === 'fine-dining' ? 'Fine Dining' : 'Quick Bites';
-  const subtitle = category === 'fine-dining'
-    ? 'Discover restaurants near you'
-    : 'Quick meals, snacks & more';
+  const subtitle =
+    category === 'fine-dining'
+      ? 'Discover restaurants near you'
+      : 'Quick meals, snacks & more';
 
   const selectedCityLabel =
     SUPPORTED_SERVICE_CITIES.find((city) => city.value === selectedCity)?.label || selectedCity;
@@ -73,93 +71,66 @@ export default function ShopsPage() {
     });
   };
 
-  useEffect(() => {
-    async function fetchVendors() {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('vendor_profiles')
-          .select('id, business_name, business_type, description, logo_url, banner_url, address, city, is_active, metadata')
-          .eq('is_active', true);
-
-        if (error) {
-          console.error('Error fetching vendors:', error);
-          setVendors([]);
-          setLoading(false);
-          return;
-        }
-
-        const profiles = (data || []) as (VendorProfile & { metadata?: { business_category?: string } })[];
-        const cityFilteredProfiles = profiles.filter(
-          (v) => normalizeCity(v.city) === selectedCity
-        );
-        const filters = CATEGORY_FILTERS[category];
-        const filtered = filters
-          ? cityFilteredProfiles.filter((v) => {
-              const type = (v.business_type || '').toLowerCase();
-              const cat = (v.metadata?.business_category || '').toLowerCase();
-              return filters.some((f) => type.includes(f) || cat.includes(f));
-            })
-          : cityFilteredProfiles;
-
-        // If no matches from filter, show all food vendors or all vendors
-        const foodTypes = ['restaurant', 'cafe', 'bakery', 'fast-food', 'chinese', 'indian', 'italian', 'desserts'];
-        const foodVendors = cityFilteredProfiles.filter((v) => {
-          const t = (v.business_type || '').toLowerCase();
-          return foodTypes.some((f) => t.includes(f));
-        });
-        const final = filtered.length > 0
-          ? filtered
-          : (foodVendors.length > 0 ? foodVendors : cityFilteredProfiles);
-
-        setVendors(final);
-      } catch (err) {
-        console.error(err);
-        setVendors([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchVendors();
-  }, [category, selectedCity]);
+  const profileTarget = hasCustomerAccount
+    ? ROUTES.CUSTOMER_PROFILE
+    : `${ROUTES.CUSTOMER_AUTH}?redirect=${encodeURIComponent(ROUTES.CUSTOMER_HOME)}`;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-8">
-      {/* Header - safe area for notched devices */}
-      <header className="sticky top-0 z-50 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 shadow-sm pt-[env(safe-area-inset-top,0px)]">
-        <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-8">
+      <header className="sticky top-0 z-20 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 shadow-sm pt-[env(safe-area-inset-top,0px)]">
+        <div className="px-4 sm:px-6 py-3 sm:py-3 max-w-4xl mx-auto">
+          <div className="flex items-center justify-between gap-2">
             <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 px-3 py-2 -ml-3 rounded-lg text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 hover:bg-gray-100 dark:hover:bg-slate-800 active:scale-95 touch-target"
-              aria-label="Go back"
+              type="button"
+              onClick={() => navigate(ROUTES.CUSTOMER_HOME)}
+              className="touch-target shrink-0 flex items-center gap-1 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 -ml-1 px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800"
+              aria-label="Back to home"
             >
-              <ArrowLeft className="w-5 h-5" />
-              <span className="text-sm font-medium">Back</span>
+              <ChevronLeft className="w-5 h-5" />
+              <span>Home</span>
             </button>
-            <Link to={ROUTES.HOME}>
+            <Link to={ROUTES.CUSTOMER_HOME} className="shrink-0 min-w-0">
               <Logo size="md" variant="light" />
             </Link>
+            {hasCustomerAccount && (
+              <p className="hidden sm:block flex-1 text-center text-sm text-gray-500 dark:text-slate-400 truncate px-2">
+                Hi, {firstName(user?.full_name, user?.email)}
+              </p>
+            )}
             <Link
-              to={hasCustomerAccount ? ROUTES.CUSTOMER_PROFILE : ROUTES.CUSTOMER_AUTH}
-              className="touch-target shrink-0 w-11 h-11 rounded-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-slate-700 active:scale-95 transition-all"
+              to={profileTarget}
+              className="touch-target shrink-0 flex items-center justify-center w-11 h-11 rounded-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 active:scale-95 transition-all overflow-hidden"
               aria-label={hasCustomerAccount ? 'Open profile' : 'Sign in'}
             >
-              <User className="w-5 h-5 text-gray-700 dark:text-slate-200" aria-hidden="true" />
+              {hasCustomerAccount && user?.avatar_url ? (
+                <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+              ) : hasCustomerAccount ? (
+                <span className="text-xs font-semibold text-gray-700 dark:text-slate-200 flex items-center justify-center w-full h-full">
+                  {getInitials(user?.full_name, user?.email)}
+                </span>
+              ) : (
+                <User className="w-5 h-5 text-gray-700 dark:text-slate-200" aria-hidden />
+              )}
             </Link>
           </div>
+          {hasCustomerAccount && (
+            <p className="sm:hidden text-sm text-gray-600 dark:text-slate-300 mt-2 font-medium">
+              Hi, {firstName(user?.full_name, user?.email)}
+            </p>
+          )}
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1">{title}</h1>
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-gray-600 dark:text-slate-400">{subtitle}</p>
+      <main className="flex-1 px-4 sm:px-6 py-5 sm:py-6 max-w-4xl mx-auto w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-slate-400 min-w-0">
+            <MapPin className="w-4 h-4 shrink-0 text-orange-500" aria-hidden />
+            <span className="truncate">{selectedCityLabel}</span>
+          </div>
           <div className="w-full sm:w-[220px]">
             <Select value={selectedCity} onValueChange={handleCityChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select city" />
+              <SelectTrigger aria-label="Change city">
+                <SelectValue placeholder="City" />
               </SelectTrigger>
               <SelectContent>
                 {SUPPORTED_SERVICE_CITIES.map((city) => (
@@ -172,17 +143,22 @@ export default function ShopsPage() {
           </div>
         </div>
 
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-slate-100 tracking-tight">{title}</h1>
+          <p className="text-gray-600 dark:text-slate-400 mt-1">{subtitle}</p>
+        </div>
+
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-48 bg-gray-200 rounded-xl animate-pulse" />
+              <div key={i} className="h-40 rounded-2xl bg-gray-200 dark:bg-slate-800 animate-pulse" />
             ))}
           </div>
         ) : vendors.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800">
+          <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800">
             <Store className="w-16 h-16 text-gray-300 dark:text-slate-600 mx-auto mb-4" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">No shops yet</h2>
-            <p className="text-gray-600 dark:text-slate-400 mb-6 max-w-sm mx-auto">
+            <p className="text-gray-600 dark:text-slate-400 mb-6 max-w-sm mx-auto text-sm">
               No active shops found in {selectedCityLabel}. Try another city or add your shop to start receiving orders.
             </p>
             <Link
@@ -194,42 +170,24 @@ export default function ShopsPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="space-y-4 list-none p-0 m-0">
             {vendors.map((vendor) => (
-            <Link
-              key={vendor.id}
-              to={`/storefront/${vendor.id}`}
-              className="block bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 hover:shadow-lg hover:border-purple-200 dark:hover:border-purple-900/50 active:scale-[0.99] transition-all touch-target min-h-[88px]"
-            >
-                <div className="flex gap-4">
-                  <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
-                    {vendor.logo_url ? (
-                      <img
-                        src={vendor.logo_url}
-                        alt={vendor.business_name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Store className="w-8 h-8 text-gray-400" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 dark:text-slate-100 truncate">{vendor.business_name}</h3>
-                    {vendor.business_type && (
-                      <p className="text-sm text-gray-500 dark:text-slate-400 capitalize">{vendor.business_type.replace(/-/g, ' ')}</p>
-                    )}
-                    {vendor.address && (
-                      <p className="text-xs text-gray-400 mt-1 flex items-center gap-1 truncate">
-                        <MapPin className="w-3 h-3 shrink-0" />
-                        {vendor.address}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </Link>
+              <li key={vendor.id}>
+                <RestaurantVendorCard vendor={vendor} to={storefrontPath(vendor.id)} />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
+
+        <div className="mt-8">
+          <Link
+            to={ROUTES.CUSTOMER_HOME}
+            className="inline-flex items-center gap-1 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:underline"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back to customer home
+          </Link>
+        </div>
       </main>
     </div>
   );

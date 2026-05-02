@@ -107,41 +107,49 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  customer_name TEXT;
-  customer_phone TEXT;
+  v_name TEXT;
+  v_phone TEXT;
+  v_synthetic TEXT;
+  v_phone_verified BOOLEAN;
 BEGIN
-  -- Extract customer name from metadata or use phone as fallback
-  customer_name := COALESCE(
-    NEW.raw_user_meta_data->>'name',
-    COALESCE(NEW.phone, 'Customer') -- Use phone number if name not provided
+  -- Deterministic placeholder for email-only signups (unique per user, NOT NULL safe)
+  v_synthetic := 'email:' || replace(NEW.id::text, '-', '');
+
+  v_name := COALESCE(
+    NULLIF(btrim(NEW.raw_user_meta_data->>'full_name'), ''),
+    NULLIF(btrim(NEW.raw_user_meta_data->>'name'), ''),
+    CASE WHEN NEW.phone IS NOT NULL AND btrim(NEW.phone) <> '' THEN NEW.phone ELSE NULL END,
+    'Customer'
   );
 
-  -- Extract phone number (from phone field or metadata)
-  customer_phone := COALESCE(
-    NEW.phone, -- Primary source for OTP signups
-    NEW.raw_user_meta_data->>'mobile_number',
-    NEW.raw_user_meta_data->>'phone',
-    '' -- Fallback empty string
+  v_phone := COALESCE(
+    NULLIF(btrim(NEW.phone), ''),
+    NULLIF(btrim(NEW.raw_user_meta_data->>'mobile_number'), ''),
+    NULLIF(btrim(NEW.raw_user_meta_data->>'phone'), '')
   );
 
-  -- Insert customer profile
+  IF v_phone IS NULL OR v_phone = '' THEN
+    v_phone := v_synthetic;
+    v_phone_verified := FALSE;
+  ELSE
+    v_phone_verified := TRUE;
+  END IF;
+
   INSERT INTO public.customer_profiles (
     user_id,
     email,
     name,
     mobile_number,
-    phone_verified -- Set to TRUE because OTP was verified during signup
+    phone_verified
   )
   VALUES (
-    NEW.id, -- UUID from auth.users
-    NEW.email, -- Email (may be NULL for phone-only signups)
-    customer_name,
-    customer_phone,
-    TRUE -- Phone verified via OTP during signup
+    NEW.id,
+    NEW.email,
+    v_name,
+    v_phone,
+    v_phone_verified
   );
 
-  -- Insert user role (customer)
-  -- Use ON CONFLICT to prevent duplicate insertion
   INSERT INTO public.user_roles (user_id, role)
   VALUES (NEW.id, 'customer')
   ON CONFLICT (user_id) DO NOTHING;
@@ -197,4 +205,7 @@ CREATE TRIGGER on_customer_auth_user_created
 --
 -- 5. For customer signups via OTP, the phone field in auth.users is the
 --    primary source, as it's automatically populated by Supabase Auth.
+--
+-- 6. Email/password customer signups without a phone use a synthetic
+--    mobile_number: email:<uuid_without_dashes> (unique, RLS-friendly).
 -- ============================================================================

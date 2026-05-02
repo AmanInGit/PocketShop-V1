@@ -18,6 +18,9 @@ interface OnboardingData {
   ownerName: string;
   restaurantType: string;
   businessCategory: string;
+  /** Saved URLs from vendor_profiles (preview when resuming). */
+  logoUrl: string;
+  bannerUrl: string;
   // Stage 2: Operational Details
   address: string;
   city: string;
@@ -101,6 +104,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     ownerName: '',
     restaurantType: '',
     businessCategory: '',
+    logoUrl: '',
+    bannerUrl: '',
     address: '',
     city: '',
     state: '',
@@ -130,7 +135,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       
       const { data: profile, error } = await (supabase
         .from('vendor_profiles' as any)
-        .select('onboarding_status, business_name, owner_name, business_type, address, city, state, postal_code, country, working_days, operational_hours, metadata')
+        .select(
+          'onboarding_status, business_name, owner_name, business_type, address, city, state, postal_code, country, working_days, operational_hours, metadata, logo_url, banner_url'
+        )
         .eq('user_id', user.id)
         .single()) as any;
 
@@ -149,25 +156,29 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const completion = mapStatusToStages(profile.onboarding_status || 'incomplete');
         setStageCompletion(completion);
 
-        // Load existing data from database
-        if (profile.business_name || profile.owner_name) {
-          setData(prev => ({
-            ...prev,
-            restaurantName: profile.business_name || prev.restaurantName,
-            ownerName: profile.owner_name || prev.ownerName,
-            restaurantType: profile.business_type || prev.restaurantType,
-            businessCategory: profile.metadata?.business_category || prev.businessCategory,
-            address: profile.address || prev.address,
-            city: profile.city || prev.city,
-            state: profile.state || prev.state,
-            postalCode: profile.postal_code || prev.postalCode,
-            country: profile.country || prev.country,
-            operationalZone: profile.metadata?.operational_zone || prev.operationalZone,
-            workingDays: profile.working_days || prev.workingDays,
-            operationalHours: profile.operational_hours || prev.operationalHours,
-            selectedPlan: profile.metadata?.selected_plan || prev.selectedPlan,
-          }));
-        }
+        // Load existing data from database (always merge saved image URLs; rest when basic info exists)
+        setData((prev) => ({
+          ...prev,
+          logoUrl: profile.logo_url ?? prev.logoUrl,
+          bannerUrl: profile.banner_url ?? prev.bannerUrl,
+          ...(profile.business_name || profile.owner_name
+            ? {
+                restaurantName: profile.business_name || prev.restaurantName,
+                ownerName: profile.owner_name || prev.ownerName,
+                restaurantType: profile.business_type || prev.restaurantType,
+                businessCategory: profile.metadata?.business_category || prev.businessCategory,
+                address: profile.address || prev.address,
+                city: profile.city || prev.city,
+                state: profile.state || prev.state,
+                postalCode: profile.postal_code || prev.postalCode,
+                country: profile.country || prev.country,
+                operationalZone: profile.metadata?.operational_zone || prev.operationalZone,
+                workingDays: profile.working_days || prev.workingDays,
+                operationalHours: profile.operational_hours || prev.operationalHours,
+                selectedPlan: profile.metadata?.selected_plan || prev.selectedPlan,
+              }
+            : {}),
+        }));
 
         // Set current stage based on completion
         if (completion.completed) {
@@ -351,6 +362,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ownerName: '',
       restaurantType: '',
       businessCategory: '',
+      logoUrl: '',
+      bannerUrl: '',
       address: '',
       city: '',
       state: '',

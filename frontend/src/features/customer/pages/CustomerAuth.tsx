@@ -18,6 +18,11 @@ import Logo from '@/features/common/components/Logo';
 
 const CUSTOMER_VIEW_AUTH_KEY = 'pocketshop_customer_view_auth';
 
+/** Matches DB trigger / migration: stable unique placeholder for email-only accounts */
+function syntheticCustomerMobile(userId: string): string {
+  return `email:${userId.replace(/-/g, '')}`;
+}
+
 export default function CustomerAuth() {
   const [searchParams] = useSearchParams();
   const rawRedirect = searchParams.get('redirect') || '';
@@ -76,6 +81,16 @@ export default function CustomerAuth() {
     }
   }, [authLoading, user, navigate, redirect]);
 
+  const ensureCustomerRole = async (userId: string) => {
+    const { error } = await supabase.from('user_roles').upsert(
+      { user_id: userId, role: 'customer' } as any,
+      { onConflict: 'user_id' }
+    );
+    if (error && !String(error.message || '').includes('duplicate')) {
+      console.warn('ensureCustomerRole:', error.message);
+    }
+  };
+
   const ensureCustomerProfile = async (
     authUser: { id: string; email?: string | null; user_metadata?: Record<string, any> | null },
     preferredName?: string
@@ -83,9 +98,11 @@ export default function CustomerAuth() {
     const verifiedEmail = authUser.email?.trim().toLowerCase();
     if (!verifiedEmail) return;
 
+    const synthetic = syntheticCustomerMobile(authUser.id);
+
     const { data: existing, error: existingError } = await supabase
       .from('customer_profiles')
-      .select('id, email')
+      .select('id, email, mobile_number')
       .eq('user_id', authUser.id)
       .maybeSingle();
 
@@ -94,14 +111,22 @@ export default function CustomerAuth() {
     }
 
     if (existing?.id) {
-      // Ensure stored email matches the authenticated email.
-      if (existing.email?.trim().toLowerCase() !== verifiedEmail) {
+      const emailMismatch = existing.email?.trim().toLowerCase() !== verifiedEmail;
+      const mobile = (existing as { mobile_number?: string | null }).mobile_number?.trim() ?? '';
+      const needsSynthetic = !mobile || mobile === '';
+
+      const patch: Record<string, string> = {};
+      if (emailMismatch) patch.email = verifiedEmail;
+      if (needsSynthetic) patch.mobile_number = synthetic;
+
+      if (Object.keys(patch).length > 0) {
         const { error: updateError } = await supabase
           .from('customer_profiles')
-          .update({ email: verifiedEmail })
+          .update(patch)
           .eq('id', existing.id);
         if (updateError) throw updateError;
       }
+      await ensureCustomerRole(authUser.id);
       return;
     }
 
@@ -112,16 +137,17 @@ export default function CustomerAuth() {
       verifiedEmail.split('@')[0] ||
       'Customer';
 
-    // Create row (or heal race conditions) using user_id as conflict target.
     const { error: upsertError } = await supabase.from('customer_profiles').upsert(
       {
         user_id: authUser.id,
         name: derivedName,
         email: verifiedEmail,
+        mobile_number: synthetic,
       } as any,
       { onConflict: 'user_id' }
     );
     if (upsertError) throw upsertError;
+    await ensureCustomerRole(authUser.id);
   };
 
   const handleSubmit = async (e?: React.SyntheticEvent) => {
@@ -142,10 +168,13 @@ export default function CustomerAuth() {
     setLoading(true);
     try {
       if (isSignUp) {
+        const emailRedirectTo = `${window.location.origin}${ROUTES.CUSTOMER_AUTH}`;
+
         const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password: formData.password,
           options: {
+            emailRedirectTo,
             data: {
               role: 'customer',
               user_type: 'customer',

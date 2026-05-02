@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS public.customer_profiles (
   
   -- Personal Information
   name TEXT NOT NULL,
-  mobile_number TEXT NOT NULL UNIQUE, -- REQUIRED field
+  -- Real phones are unique via partial index (see migrations); synthetic: email:<uuid>
+  mobile_number TEXT,
   email TEXT,
   
   -- Verification Status

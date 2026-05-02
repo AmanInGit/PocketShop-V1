@@ -48,6 +48,10 @@ const BusinessLandingPage: React.FC = () => {
         return;
       }
 
+      if (user.role !== 'vendor') {
+        return;
+      }
+
       try {
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) =>
@@ -64,7 +68,7 @@ const BusinessLandingPage: React.FC = () => {
         }
         
         const { getOnboardingRedirectPath } = await import('@/features/common/utils/onboardingCheck');
-        const redirectPath = await getOnboardingRedirectPath(user.id);
+        const redirectPath = await getOnboardingRedirectPath(user.id, session?.user ?? null);
         
         if (!isMounted) return;
         
