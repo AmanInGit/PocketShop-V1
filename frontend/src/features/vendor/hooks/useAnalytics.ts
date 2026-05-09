@@ -20,8 +20,16 @@ import {
   normalizeOrderStatus,
 } from '@/features/vendor/utils/metrics';
 
+type TrendingDish = {
+  id: string | null;
+  name: string;
+  quantity: number;
+  revenue: number;
+};
+
 export const useAnalytics = (days: number = 30) => {
   const { data: vendor } = useVendor();
+  const vendorIds = [vendor?.id, vendor?.user_id].filter(Boolean) as string[];
 
   return useQuery({
     queryKey: ['analytics', vendor?.id, days],
@@ -35,7 +43,7 @@ export const useAnalytics = (days: number = 30) => {
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select('*')
-        .eq('vendor_id', vendor.id)
+        .in('vendor_id', vendorIds)
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
@@ -76,6 +84,19 @@ export const useAnalytics = (days: number = 30) => {
         return acc;
       }, {} as Record<string, { amount: number; orders: number }>);
 
+      // Calculate yearly revenue (key: yyyy for correct sort)
+      const revenueByYearRaw = revenueOrders.reduce((acc, order) => {
+        const createdAt = getOrderCreatedAt(order);
+        if (!createdAt) return acc;
+        const year = format(parseISO(createdAt), 'yyyy');
+        if (!acc[year]) {
+          acc[year] = { amount: 0, orders: 0 };
+        }
+        acc[year].amount += getOrderAmount(order);
+        acc[year].orders += 1;
+        return acc;
+      }, {} as Record<string, { amount: number; orders: number }>);
+
       const salesByDay = Object.entries(salesByDayRaw || {})
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([day, values]) => ({
@@ -94,6 +115,15 @@ export const useAnalytics = (days: number = 30) => {
           orders: values.orders,
         }));
 
+      const revenueByYear = Object.entries(revenueByYearRaw || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([year, values]) => ({
+          date: year,
+          label: year,
+          amount: values.amount,
+          orders: values.orders,
+        }));
+
       // Calculate hourly distribution (peak hours)
       const ordersByHour = (orders || []).reduce((acc, order) => {
         const createdAt = getOrderCreatedAt(order);
@@ -107,7 +137,7 @@ export const useAnalytics = (days: number = 30) => {
       const { data: products, error: productsError } = await supabase
         .from('products')
         .select('id, name, category')
-        .eq('vendor_id', vendor.id);
+        .in('vendor_id', vendorIds);
 
       if (productsError && productsError.code !== '42P01') {
         throw productsError;
@@ -121,35 +151,55 @@ export const useAnalytics = (days: number = 30) => {
         return map;
       }, {} as Record<string, { name: string | null; category: string | null }>);
 
-      // Calculate product performance
-      // Items are stored as JSONB array in orders.items
+      // Calculate product performance + trending dishes (items stored as JSONB array in orders.items)
       const productStats = revenueOrders.reduce((acc, order) => {
         const items = order.items || [];
-        if (Array.isArray(items)) {
-          items.forEach((item: any) => {
-            const productId = item.product_id;
-            const productMeta = productLookup[productId] || {};
-            const productName = productMeta.name || item.name || 'Unknown';
-            const category = productMeta.category || 'Uncategorized';
+        if (!Array.isArray(items)) return acc;
 
-            if (!acc[productId]) {
-              acc[productId] = {
-                id: productId,
-                name: productName,
-                category,
-                totalSold: 0,
-                revenue: 0,
-                orders: 0,
-              };
-            }
+        items.forEach((item: any) => {
+          const productId: string | null =
+            item.product_id ? String(item.product_id) : null;
+          const productMeta = productId ? productLookup[productId] || {} : {};
+          const productName: string =
+            productMeta.name || item.name || 'Unknown';
+          const category: string =
+            productMeta.category || item.category || 'Uncategorized';
 
-            acc[productId].totalSold += item.quantity || 0;
-            acc[productId].revenue += Number(item.subtotal || (item.price * item.quantity) || 0);
-            acc[productId].orders += 1;
-          });
-        }
+          const key = productId ?? `name:${productName}`;
+          if (!acc[key]) {
+            acc[key] = {
+              id: productId,
+              name: productName,
+              category,
+              totalSold: 0,
+              revenue: 0,
+              orders: 0,
+            };
+          }
+
+          const qty = Number(item.quantity ?? item.qty ?? 0) || 0;
+          const price = Number(item.price ?? 0) || 0;
+          const subtotal =
+            Number(item.subtotal ?? item.total ?? 0) || price * qty;
+
+          acc[key].totalSold += qty;
+          acc[key].revenue += subtotal;
+          acc[key].orders += 1;
+        });
+
         return acc;
       }, {} as Record<string, any>);
+
+      const trendingDishes: TrendingDish[] = (Object.values(productStats || {}) as any[])
+        .map((p) => ({
+          id: p.id ?? null,
+          name: p.name ?? 'Unknown',
+          quantity: Number(p.totalSold ?? 0) || 0,
+          revenue: Number(p.revenue ?? 0) || 0,
+        }))
+        .filter((p) => p.quantity > 0)
+        .sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue)
+        .slice(0, 10);
 
       // Calculate category performance
       const categoryStats = Object.values(productStats || {}).reduce((acc, product: any) => {
@@ -234,6 +284,18 @@ export const useAnalytics = (days: number = 30) => {
       const thisMonthRevenue = thisMonthRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
       const lastMonthRevenue = lastMonthRevenueOrders.reduce((sum, o) => sum + getOrderAmount(o), 0);
 
+      // Returning customers (registered only): customer_id with 2+ completed orders in selected period
+      const completedByCustomerId = revenueOrders.reduce((acc, order) => {
+        const customerId = order.customer_id ? String(order.customer_id) : null;
+        if (!customerId) return acc;
+        acc[customerId] = (acc[customerId] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      const uniqueCustomersCount = Object.keys(completedByCustomerId).length;
+      const returningCustomersCount = Object.values(completedByCustomerId).filter(
+        (count) => count >= 2
+      ).length;
+
       // Build engagement heatmap: 7 days x 24 hours
       const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const heatmap = daysOfWeek.map((label, dayIndex) => ({
@@ -295,11 +357,13 @@ export const useAnalytics = (days: number = 30) => {
 
       return {
         totalRevenue,
+        todayRevenue,
         totalOrders,
         completedOrders,
         averageOrderValue,
         salesByDay,
         salesByMonth,
+        revenueByYear,
         peakHours: Object.entries(ordersByHour || {})
           .map(([hour, count]) => ({
             hour: parseInt(hour),
@@ -308,8 +372,11 @@ export const useAnalytics = (days: number = 30) => {
           .sort((a, b) => b.orders - a.orders)
           .slice(0, 5),
         topProducts: (Object.values(productStats || {}) as any[])
-          .sort((a: any, b: any) => b.revenue - a.revenue)
+          .sort((a: any, b: any) => (b.totalSold ?? 0) - (a.totalSold ?? 0) || (b.revenue ?? 0) - (a.revenue ?? 0))
           .slice(0, 10),
+        trendingDishes,
+        uniqueCustomersCount,
+        returningCustomersCount,
         categoryPerformance: Object.values(categoryStats || {}) as any[],
         statusDistribution: Object.entries(statusDistribution || {}).map(([status, count]) => ({
           status,
@@ -405,7 +472,7 @@ export const useAnalytics = (days: number = 30) => {
         },
       };
     },
-    enabled: !!vendor?.id,
+    enabled: vendorIds.length > 0,
     retry: false, // Don't retry on error
   });
 };
@@ -413,13 +480,18 @@ export const useAnalytics = (days: number = 30) => {
 function getEmptyAnalytics() {
   return {
     totalRevenue: 0,
+    todayRevenue: 0,
     totalOrders: 0,
     completedOrders: 0,
     averageOrderValue: 0,
     salesByDay: [],
     salesByMonth: [],
+    revenueByYear: [],
     peakHours: [],
     topProducts: [],
+    trendingDishes: [],
+    uniqueCustomersCount: 0,
+    returningCustomersCount: 0,
     categoryPerformance: [],
     statusDistribution: [],
     weeklyComparison: {
@@ -458,29 +530,3 @@ function getEmptyAnalytics() {
     },
   };
 }
-
-export const useAIInsights = () => {
-  const { data: vendor } = useVendor();
-  const { data: analytics } = useAnalytics(30);
-
-  return useQuery({
-    queryKey: ['ai-insights', vendor?.id, analytics],
-    queryFn: async () => {
-      if (!vendor?.id || !analytics) throw new Error('Missing data');
-
-      const { data, error } = await supabase.functions.invoke('generate-insights', {
-        body: { 
-          vendorId: vendor.id,
-          analytics 
-        },
-      });
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!vendor?.id && !!analytics,
-    staleTime: 1000 * 60 * 60, // Cache for 1 hour
-    retry: false, // Don't retry on error (edge function may not exist yet)
-  });
-};
-

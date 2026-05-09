@@ -45,7 +45,8 @@ export const preloadInventory = () => {
  * For background prefetching, use preloadInsightsOnIdle() instead.
  */
 export const preloadInsights = () => {
-  return import('../features/analytics/pages/InsightsPage');
+  // Use vendor analytics (real-data) page; do not preload demo InsightsPage.
+  return import('../features/vendor/pages/Analytics');
 };
 
 /**
@@ -55,12 +56,12 @@ export const preloadInsights = () => {
 export const preloadInsightsOnIdle = () => {
   if ('requestIdleCallback' in window) {
     requestIdleCallback(() => {
-      import('../features/analytics/pages/InsightsPage').catch(console.error);
+      import('../features/vendor/pages/Analytics').catch(console.error);
     }, { timeout: 3000 });
   } else {
     // Fallback for browsers without requestIdleCallback
     setTimeout(() => {
-      import('../features/analytics/pages/InsightsPage').catch(console.error);
+      import('../features/vendor/pages/Analytics').catch(console.error);
     }, 3000);
   }
 };

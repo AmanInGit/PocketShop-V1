@@ -7,6 +7,8 @@ import { useQueryClient } from '@tanstack/react-query';
 export const useOrders = () => {
   const { data: vendor } = useVendor();
   const queryClient = useQueryClient();
+  const vendorIds = [vendor?.id, vendor?.user_id].filter(Boolean) as string[];
+  const vendorIdKey = vendorIds.join('|');
 
   const query = useQuery({
     queryKey: ['orders', vendor?.id],
@@ -16,7 +18,7 @@ export const useOrders = () => {
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .eq('vendor_id', vendor.id)
+        .in('vendor_id', vendorIds)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -40,37 +42,40 @@ export const useOrders = () => {
         return true;
       });
     },
-    enabled: !!vendor?.id,
+    enabled: vendorIds.length > 0,
     retry: false, // Don't retry on error
     // Fallback refresh in case realtime events are delayed/dropped.
-    refetchInterval: vendor?.id ? 5000 : false,
+    refetchInterval: vendorIds.length > 0 ? 5000 : false,
   });
 
   // Set up realtime subscription for orders
   useEffect(() => {
-    if (!vendor?.id) return;
+    if (vendorIds.length === 0) return;
 
-    const channelName = `orders-changes-${vendor.id}-${Date.now()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `vendor_id=eq.${vendor.id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['orders', vendor.id] });
-        }
-      )
-      .subscribe();
+    const channels = vendorIds.map((id) =>
+      supabase
+        .channel(`orders-changes-${id}-${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'orders',
+            filter: `vendor_id=eq.${id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({ queryKey: ['orders', vendor?.id] });
+          }
+        )
+        .subscribe()
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      channels.forEach((channel) => {
+        supabase.removeChannel(channel);
+      });
     };
-  }, [vendor?.id, queryClient]);
+  }, [vendorIdKey, vendor?.id, queryClient]);
 
   return query;
 };

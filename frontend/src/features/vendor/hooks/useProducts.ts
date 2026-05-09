@@ -5,6 +5,8 @@ import { useVendor } from './useVendor';
 
 export const useProducts = () => {
   const { data: vendor } = useVendor();
+  const vendorIds = [vendor?.id, vendor?.user_id].filter(Boolean) as string[];
+  const vendorIdKey = vendorIds.join('|');
 
   const query = useQuery({
     queryKey: ['products', vendor?.id],
@@ -14,7 +16,7 @@ export const useProducts = () => {
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('vendor_id', vendor.id)
+        .in('vendor_id', vendorIds)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -27,41 +29,46 @@ export const useProducts = () => {
       }
       return data || [];
     },
-    enabled: !!vendor?.id,
+    enabled: vendorIds.length > 0,
     retry: false, // Don't retry on error
     refetchOnWindowFocus: true, // Refetch when returning to tab so stock stays in sync
   });
 
   // Set up realtime subscription for products
   useEffect(() => {
-    if (!vendor?.id) return;
+    if (vendorIds.length === 0) return;
 
-    const channel = supabase
-      .channel('products-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'products',
-          filter: `vendor_id=eq.${vendor.id}`,
-        },
-        () => {
-          query.refetch();
-        }
-      )
-      .subscribe();
+    const channels = vendorIds.map((id) =>
+      supabase
+        .channel(`products-changes-${id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'products',
+            filter: `vendor_id=eq.${id}`,
+          },
+          () => {
+            query.refetch();
+          }
+        )
+        .subscribe()
+    );
 
     return () => {
-      supabase.removeChannel(channel);
+      channels.forEach((channel) => {
+        supabase.removeChannel(channel);
+      });
     };
-  }, [vendor?.id, query]);
+  }, [vendorIdKey, query]);
 
   return query;
 };
 
 export const useProduct = (productId: string | undefined) => {
   const { data: vendor } = useVendor();
+  const vendorIds = [vendor?.id, vendor?.user_id].filter(Boolean) as string[];
 
   return useQuery({
     queryKey: ['product', productId, vendor?.id],
@@ -72,7 +79,7 @@ export const useProduct = (productId: string | undefined) => {
         .from('products')
         .select('*')
         .eq('id', productId)
-        .eq('vendor_id', vendor.id)
+        .in('vendor_id', vendorIds)
         .single();
 
       if (error) {
@@ -85,7 +92,7 @@ export const useProduct = (productId: string | undefined) => {
       }
       return data;
     },
-    enabled: !!vendor?.id && !!productId,
+    enabled: vendorIds.length > 0 && !!productId,
     retry: false, // Don't retry on error
   });
 };

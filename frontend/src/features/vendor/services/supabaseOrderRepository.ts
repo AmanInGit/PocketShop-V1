@@ -103,12 +103,27 @@ function mapPaymentMethod(v?: string | null): Order['paymentMethod'] {
 }
 
 export class SupabaseOrderRepository implements IOrderRepository {
+  private async getVendorQueryIds(vendorId: string): Promise<string[]> {
+    const ids = new Set<string>([vendorId]);
+    const { data } = await supabase
+      .from('vendor_profiles')
+      .select('id, user_id')
+      .or(`id.eq.${vendorId},user_id.eq.${vendorId}`)
+      .maybeSingle();
+
+    const profile = data as { id?: string | null; user_id?: string | null } | null;
+    if (profile?.id) ids.add(profile.id);
+    if (profile?.user_id) ids.add(profile.user_id);
+    return Array.from(ids);
+  }
+
   async fetchOrders(vendorId: string): Promise<Order[]> {
+    const vendorIds = await this.getVendorQueryIds(vendorId);
     // Use orders.* only – base schema has payment_status on orders. If payments table exists, optional join can be added.
     const { data, error } = await supabase
       .from('orders')
       .select('*')
-      .eq('vendor_id', vendorId)
+      .in('vendor_id', vendorIds)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true });
 
@@ -136,33 +151,39 @@ export class SupabaseOrderRepository implements IOrderRepository {
 
   subscribeToOrders(vendorId: string, cb: (orders: Order[]) => void): () => void {
     let mounted = true;
+    let channels: any[] = [];
 
     // Initial fetch
     this.fetchOrders(vendorId).then((orders) => {
       if (mounted) cb(orders);
     });
 
-    const channel = supabase
-      .channel(`orders-${vendorId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `vendor_id=eq.${vendorId}`,
-        },
-        () => {
-          if (mounted) {
-            this.fetchOrders(vendorId).then((orders) => cb(orders));
-          }
-        }
-      )
-      .subscribe();
+    this.getVendorQueryIds(vendorId).then((vendorIds) => {
+      if (!mounted) return;
+      channels = vendorIds.map((id) =>
+        supabase
+          .channel(`orders-${id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'orders',
+              filter: `vendor_id=eq.${id}`,
+            },
+            () => {
+              if (mounted) {
+                this.fetchOrders(vendorId).then((orders) => cb(orders));
+              }
+            }
+          )
+          .subscribe()
+      );
+    });
 
     return () => {
       mounted = false;
-      supabase.removeChannel(channel);
+      channels.forEach((channel) => supabase.removeChannel(channel));
     };
   }
 
@@ -236,10 +257,11 @@ export class SupabaseOrderRepository implements IOrderRepository {
   }
 
   async fetchMenuItems(vendorId: string): Promise<MenuItem[]> {
+    const vendorIds = await this.getVendorQueryIds(vendorId);
     const { data, error } = await supabase
       .from('products')
       .select('*')
-      .eq('vendor_id', vendorId)
+      .in('vendor_id', vendorIds)
       .order('created_at', { ascending: false });
 
     if (error) return [];

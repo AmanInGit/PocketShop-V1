@@ -563,6 +563,18 @@ export default function PublicStorefront() {
       .filter((o) => o.value > 0 && o.promo_code);
   }, [vendor?.metadata]);
 
+  const { restaurantGalleryImages, foodGalleryImages } = useMemo(() => {
+    const metadata = (vendor?.metadata as Record<string, unknown> | undefined) ?? {};
+    const asImageArray = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : [];
+    return {
+      restaurantGalleryImages: asImageArray(metadata.restaurant_images),
+      foodGalleryImages: asImageArray(metadata.food_images),
+    };
+  }, [vendor?.metadata]);
+
   const [appliedPromoCode, setAppliedPromoCode] = useState("");
   const appliedOffer = useMemo(() => {
     if (!appliedPromoCode) return null;
@@ -1021,6 +1033,63 @@ export default function PublicStorefront() {
               <OffersCarousel offers={offers} isStoreClosed={isStoreClosed} />
             )}
 
+            {(restaurantGalleryImages.length > 0 || foodGalleryImages.length > 0) && (
+              <section className="mb-6 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 md:p-5 shadow-sm">
+                <div className="mb-4">
+                  <h3 className="text-lg font-bold text-foreground">Restaurant gallery</h3>
+                  <p className="text-sm text-muted-foreground">Latest photos from this restaurant.</p>
+                </div>
+
+                {restaurantGalleryImages.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-medium text-foreground mb-2">Restaurant photos</p>
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {restaurantGalleryImages.map((url, index) => (
+                        <button
+                          key={`${url}-${index}`}
+                          type="button"
+                          className="shrink-0 h-28 w-40 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 bg-muted"
+                          onClick={() =>
+                            setImagePreviewProduct({
+                              image_url: url,
+                              name: vendor?.business_name ? `${vendor.business_name} photo` : 'Restaurant photo',
+                              description: 'Restaurant gallery image',
+                            })
+                          }
+                        >
+                          <img src={url} alt="Restaurant gallery" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {foodGalleryImages.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-foreground mb-2">Food photos</p>
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {foodGalleryImages.map((url, index) => (
+                        <button
+                          key={`${url}-${index}`}
+                          type="button"
+                          className="shrink-0 h-28 w-40 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 bg-muted"
+                          onClick={() =>
+                            setImagePreviewProduct({
+                              image_url: url,
+                              name: 'Food photo',
+                              description: 'Food gallery image',
+                            })
+                          }
+                        >
+                          <img src={url} alt="Food gallery" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Search and Filters */}
             <div className="mb-6 space-y-4 bg-white dark:bg-slate-900 rounded-2xl shadow-sm dark:shadow-none dark:border dark:border-slate-800 px-4 py-5">
               <div className="relative max-w-xl">
@@ -1233,7 +1302,9 @@ export default function PublicStorefront() {
               </div>
               <div className="p-4 bg-background">
                 <h3 className="text-lg font-semibold">{imagePreviewProduct.name}</h3>
-                <p className="text-primary font-bold mt-0.5">₹{Number(imagePreviewProduct.price).toFixed(2)}</p>
+                {Number.isFinite(Number(imagePreviewProduct.price)) && (
+                  <p className="text-primary font-bold mt-0.5">₹{Number(imagePreviewProduct.price).toFixed(2)}</p>
+                )}
                 {imagePreviewProduct.description && (
                   <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{imagePreviewProduct.description}</p>
                 )}

@@ -9,6 +9,13 @@ export interface RestaurantVendorCardProps {
 
 export function RestaurantVendorCard({ vendor, to }: RestaurantVendorCardProps) {
   const chip = offerChipFromMetadata(vendor.metadata);
+  const metadata = (vendor.metadata as Record<string, unknown> | null) ?? {};
+  const fallbackRestaurantImage =
+    Array.isArray(metadata.restaurant_images) &&
+    typeof metadata.restaurant_images[0] === 'string'
+      ? (metadata.restaurant_images[0] as string)
+      : null;
+  const cardBannerImage = vendor.banner_url || fallbackRestaurantImage;
 
   return (
     <Link
@@ -16,8 +23,8 @@ export function RestaurantVendorCard({ vendor, to }: RestaurantVendorCardProps) 
       className="block bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden shadow-sm hover:shadow-md hover:border-orange-200 dark:hover:border-orange-800/60 active:scale-[0.99] transition-all text-left"
     >
       <div className="relative h-36 sm:h-40 bg-gradient-to-br from-orange-100 to-amber-50 dark:from-slate-800 dark:to-slate-900">
-        {vendor.banner_url ? (
-          <img src={vendor.banner_url} alt="" className="w-full h-full object-cover" />
+        {cardBannerImage ? (
+          <img src={cardBannerImage} alt="" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Store className="w-16 h-16 text-orange-200/80 dark:text-slate-600" />

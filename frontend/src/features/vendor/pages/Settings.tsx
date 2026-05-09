@@ -69,6 +69,7 @@ const BUSINESS_ENTITY_TYPES = [
 ] as const;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const MAX_VENDOR_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
 const DEFAULT_NOTIFICATION_PREFS = {
   email_notifications: true,
@@ -265,6 +266,7 @@ export default function Settings() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [appearOnDashboard, setAppearOnDashboard] = useState(false);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [metadataDraft, setMetadataDraft] = useState<Record<string, unknown>>({});
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const [confirmSaveTitle, setConfirmSaveTitle] = useState('Save changes?');
   const [confirmSaveDescription, setConfirmSaveDescription] = useState('Do you want to save these changes?');
@@ -293,6 +295,7 @@ export default function Settings() {
   useEffect(() => {
     if (vendor) {
       const meta = vendor.metadata as Record<string, unknown> | null;
+      const normalizedMeta = meta ?? {};
       const nextBusinessForm = {
         business_name: vendor.business_name ?? '',
         business_type: vendor.business_type ?? '',
@@ -402,6 +405,7 @@ export default function Settings() {
       setOffers(nextOffers);
       setAppearOnDashboard(nextAppearOnDashboard);
       setStaffMembers(nextStaffMembers);
+      setMetadataDraft(normalizedMeta);
 
       setBaseline({
         businessForm: nextBusinessForm,
@@ -433,7 +437,10 @@ export default function Settings() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      if (data?.metadata && typeof data.metadata === 'object') {
+        setMetadataDraft(data.metadata as Record<string, unknown>);
+      }
       queryClient.invalidateQueries({ queryKey: ['vendor'] });
       toast({ title: 'Settings saved', description: 'Your changes have been saved.' });
     },
@@ -441,6 +448,29 @@ export default function Settings() {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
     },
   });
+
+  const mutateVendorWithMetadata = (
+    metadataPatch: Record<string, unknown>,
+    additionalUpdates: Record<string, unknown> = {},
+    afterSuccess?: () => void,
+  ) => {
+    const nextMetadata = {
+      ...metadataDraft,
+      ...metadataPatch,
+    };
+    updateMutation.mutate(
+      {
+        ...additionalUpdates,
+        metadata: nextMetadata,
+      },
+      {
+        onSuccess: () => {
+          setMetadataDraft(nextMetadata);
+          afterSuccess?.();
+        },
+      },
+    );
+  };
 
   const toggleWorkingDay = (day: string) => {
     setWorkingDays((prev) =>
@@ -616,6 +646,12 @@ export default function Settings() {
 
   const uploadVendorImage = async (file: File, folder: 'restaurant' | 'food') => {
     if (!vendor?.id) throw new Error('No vendor ID');
+    if (!file.type.startsWith('image/')) {
+      throw new Error(`${file.name} is not a supported image file.`);
+    }
+    if (file.size > MAX_VENDOR_IMAGE_SIZE_BYTES) {
+      throw new Error(`${file.name} exceeds 5MB. Please upload a smaller image.`);
+    }
 
     const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `${vendor.id}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -640,16 +676,16 @@ export default function Settings() {
       const next = [...restaurantImages, ...uploaded];
       setRestaurantImages(next);
 
-      const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-      const currentFood = (meta.food_images as string[]) ?? foodImages;
-      updateMutation.mutate({
-        metadata: {
-          ...meta,
+      mutateVendorWithMetadata(
+        {
           restaurant_images: next,
-          food_images: currentFood,
+          food_images: foodImages,
         },
-      });
-      setBaseline((prev) => (prev ? { ...prev, restaurantImages: next } : prev));
+        {},
+        () => {
+          setBaseline((prev) => (prev ? { ...prev, restaurantImages: next } : prev));
+        },
+      );
     } catch (err: any) {
       console.error('Error uploading restaurant images', err);
       toast({
@@ -676,16 +712,16 @@ export default function Settings() {
       const next = [...foodImages, ...uploaded];
       setFoodImages(next);
 
-      const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-      const currentRestaurant = (meta.restaurant_images as string[]) ?? restaurantImages;
-      updateMutation.mutate({
-        metadata: {
-          ...meta,
-          restaurant_images: currentRestaurant,
+      mutateVendorWithMetadata(
+        {
+          restaurant_images: restaurantImages,
           food_images: next,
         },
-      });
-      setBaseline((prev) => (prev ? { ...prev, foodImages: next } : prev));
+        {},
+        () => {
+          setBaseline((prev) => (prev ? { ...prev, foodImages: next } : prev));
+        },
+      );
     } catch (err: any) {
       console.error('Error uploading food images', err);
       toast({
@@ -702,23 +738,21 @@ export default function Settings() {
   const removeRestaurantImage = (urlToRemove: string) => {
     const next = restaurantImages.filter((url) => url !== urlToRemove);
     setRestaurantImages(next);
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    const currentFood = (meta.food_images as string[]) ?? foodImages;
-    updateMutation.mutate({
-      metadata: { ...meta, restaurant_images: next, food_images: currentFood },
-    });
-    setBaseline((prev) => (prev ? { ...prev, restaurantImages: next } : prev));
+    mutateVendorWithMetadata(
+      { restaurant_images: next, food_images: foodImages },
+      {},
+      () => setBaseline((prev) => (prev ? { ...prev, restaurantImages: next } : prev)),
+    );
   };
 
   const removeFoodImage = (urlToRemove: string) => {
     const next = foodImages.filter((url) => url !== urlToRemove);
     setFoodImages(next);
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    const currentRestaurant = (meta.restaurant_images as string[]) ?? restaurantImages;
-    updateMutation.mutate({
-      metadata: { ...meta, restaurant_images: currentRestaurant, food_images: next },
-    });
-    setBaseline((prev) => (prev ? { ...prev, foodImages: next } : prev));
+    mutateVendorWithMetadata(
+      { restaurant_images: restaurantImages, food_images: next },
+      {},
+      () => setBaseline((prev) => (prev ? { ...prev, foodImages: next } : prev)),
+    );
   };
 
   const requestSaveConfirmation = (title: string, description: string, action: () => void) => {
@@ -729,39 +763,41 @@ export default function Settings() {
   };
 
   const saveBusiness = () => {
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    updateMutation.mutate({
-      business_name: businessForm.business_name,
-      business_type: businessForm.business_type || null,
-      description: businessForm.description || null,
-      address: businessForm.address || null,
-      city: businessForm.city || null,
-      state: businessForm.state || null,
-      postal_code: businessForm.postal_code || null,
-      country: businessForm.country,
-      metadata: {
-        ...meta,
+    mutateVendorWithMetadata(
+      {
         appear_on_dashboard: appearOnDashboard,
       },
-    });
-    setBaseline((prev) =>
-      prev
-        ? { ...prev, businessForm: { ...businessForm }, appearOnDashboard }
-        : prev
+      {
+        business_name: businessForm.business_name,
+        business_type: businessForm.business_type || null,
+        description: businessForm.description || null,
+        address: businessForm.address || null,
+        city: businessForm.city || null,
+        state: businessForm.state || null,
+        postal_code: businessForm.postal_code || null,
+        country: businessForm.country,
+      },
+      () =>
+        setBaseline((prev) =>
+          prev
+            ? { ...prev, businessForm: { ...businessForm }, appearOnDashboard }
+            : prev
+        ),
     );
   };
 
   const saveProfile = () => {
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    updateMutation.mutate({
-      owner_name: profileForm.owner_name || null,
-      email: profileForm.email,
-      mobile_number: profileForm.mobile_number,
-      logo_url: profileForm.logo_url || null,
-      banner_url: profileForm.banner_url || null,
-      metadata: { ...meta, banner_color: profileForm.banner_color },
-    });
-    setBaseline((prev) => (prev ? { ...prev, profileForm: { ...profileForm } } : prev));
+    mutateVendorWithMetadata(
+      { banner_color: profileForm.banner_color },
+      {
+        owner_name: profileForm.owner_name || null,
+        email: profileForm.email,
+        mobile_number: profileForm.mobile_number,
+        logo_url: profileForm.logo_url || null,
+        banner_url: profileForm.banner_url || null,
+      },
+      () => setBaseline((prev) => (prev ? { ...prev, profileForm: { ...profileForm } } : prev)),
+    );
   };
 
   const saveOperationalHours = () => {
@@ -785,15 +821,14 @@ export default function Settings() {
   };
 
   const saveNotifications = () => {
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    updateMutation.mutate({
-      metadata: { ...meta, notification_preferences: notificationPrefs },
-    });
-    setBaseline((prev) => (prev ? { ...prev, notificationPrefs: { ...notificationPrefs } } : prev));
+    mutateVendorWithMetadata(
+      { notification_preferences: notificationPrefs },
+      {},
+      () => setBaseline((prev) => (prev ? { ...prev, notificationPrefs: { ...notificationPrefs } } : prev)),
+    );
   };
 
   const savePayment = () => {
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
     const normalizedGstin = (kycTaxForm.gstin ?? '').trim().toUpperCase();
     const shouldRequireGstin = !!kycTaxForm.gst_registered;
     if (shouldRequireGstin && normalizedGstin.length !== 15) {
@@ -804,9 +839,8 @@ export default function Settings() {
       });
       return;
     }
-    updateMutation.mutate({
-      metadata: {
-        ...meta,
+    mutateVendorWithMetadata(
+      {
         bank_account: {
           account_number: paymentForm.account_number || undefined,
           ifsc: paymentForm.ifsc || undefined,
@@ -831,34 +865,35 @@ export default function Settings() {
           printer_target: (kotSettings.printer_target || '').trim() || undefined,
         },
       },
-    });
-    setBaseline((prev) =>
-      prev
-        ? {
-            ...prev,
-            paymentForm: { ...paymentForm },
-            kycTaxForm: {
-              ...kycTaxForm,
-              gstin: shouldRequireGstin ? normalizedGstin : '',
-            },
-            paymentModes: { ...paymentModes },
-            kotSettings: { ...kotSettings },
-          }
-        : prev
+      {},
+      () =>
+        setBaseline((prev) =>
+          prev
+            ? {
+                ...prev,
+                paymentForm: { ...paymentForm },
+                kycTaxForm: {
+                  ...kycTaxForm,
+                  gstin: shouldRequireGstin ? normalizedGstin : '',
+                },
+                paymentModes: { ...paymentModes },
+                kotSettings: { ...kotSettings },
+              }
+            : prev
+        ),
     );
     setConfirmAccount('');
     setShowBankForm(false);
   };
 
   const saveOffers = () => {
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    updateMutation.mutate({
-      metadata: {
-        ...meta,
+    mutateVendorWithMetadata(
+      {
         offers: offers.filter((o) => o.value > 0 && o.min_order >= 0 && (o.promo_code || '').trim()),
       },
-    });
-    setBaseline((prev) => (prev ? { ...prev, offers: [...offers] } : prev));
+      {},
+      () => setBaseline((prev) => (prev ? { ...prev, offers: [...offers] } : prev)),
+    );
   };
 
   const addOffer = () => {
@@ -916,14 +951,11 @@ export default function Settings() {
       }))
       .filter((s) => s.name && s.phone);
 
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    updateMutation.mutate({
-      metadata: {
-        ...meta,
-        staff_accounts: sanitized,
-      },
-    });
-    setBaseline((prev) => (prev ? { ...prev, staffMembers: [...sanitized] } : prev));
+    mutateVendorWithMetadata(
+      { staff_accounts: sanitized },
+      {},
+      () => setBaseline((prev) => (prev ? { ...prev, staffMembers: [...sanitized] } : prev)),
+    );
   };
 
   const handleDownloadTableQR = async (tableSlug: string, tableCode: string) => {
@@ -948,10 +980,8 @@ export default function Settings() {
   };
 
   const saveFssai = () => {
-    const meta = (vendor?.metadata as Record<string, unknown>) ?? {};
-    updateMutation.mutate({
-      metadata: {
-        ...meta,
+    mutateVendorWithMetadata(
+      {
         fssai: {
           license_number: fssaiForm.license_number || undefined,
           expiry_date: fssaiForm.expiry_date || undefined,
@@ -959,8 +989,9 @@ export default function Settings() {
           status: fssaiForm.status || 'unverified',
         },
       },
-    });
-    setBaseline((prev) => (prev ? { ...prev, fssaiForm: { ...fssaiForm } } : prev));
+      {},
+      () => setBaseline((prev) => (prev ? { ...prev, fssaiForm: { ...fssaiForm } } : prev)),
+    );
   };
 
   if (vendorLoading || !vendor) {
@@ -1256,7 +1287,6 @@ export default function Settings() {
                     saveBusiness
                   )
                 }
-                disabled={updateMutation.isPending || !businessDirty}
               >
                 {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save business info

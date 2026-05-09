@@ -168,7 +168,9 @@ export default function CustomerAuth() {
     setLoading(true);
     try {
       if (isSignUp) {
-        const emailRedirectTo = `${window.location.origin}${ROUTES.CUSTOMER_AUTH}`;
+        // Use the canonical auth callback URL for email confirmations.
+        // This avoids per-route allowlist mismatches in Supabase redirect settings.
+        const emailRedirectTo = `${window.location.origin}${ROUTES.AUTH_CALLBACK}`;
 
         const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,

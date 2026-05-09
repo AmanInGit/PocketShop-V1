@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { ROUTES } from '@/constants/routes';
 import type { User, AuthState } from '@/features/common/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -439,7 +440,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setError(null);
 
       const redirectTo = options?.emailRedirectTo ?? (userData.role === 'customer'
-        ? `${window.location.origin}/customer-home`
+        ? `${window.location.origin}${ROUTES.AUTH_CALLBACK}`
         : `${window.location.origin}/vendor/onboarding/stage-1`);
 
       const { data, error } = await supabase.auth.signUp({
