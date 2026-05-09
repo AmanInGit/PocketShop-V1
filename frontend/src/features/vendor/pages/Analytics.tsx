@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { IndianRupee, ShoppingCart, TrendingUp, Users } from "lucide-react";
+import { IndianRupee, ShoppingCart, TrendingUp, Users, MessageSquare } from "lucide-react";
 import {
   Line,
   BarChart,
@@ -19,6 +19,8 @@ import {
 } from "recharts";
 import { useAnalytics } from "@/features/vendor/hooks/useAnalytics";
 import { useRecommendations } from "@/features/vendor/hooks/useRecommendations";
+import { useVendor } from "@/features/vendor/hooks/useVendor";
+import { RealtimeFeedback } from "../components/RealtimeFeedback";
 
 const formatCurrency = (
   value: number,
@@ -50,6 +52,7 @@ export default function Analytics() {
     "daily"
   );
 
+  const { data: vendor } = useVendor();
   const {
     data: analytics,
     isLoading: analyticsLoading,
@@ -168,7 +171,7 @@ export default function Analytics() {
           ))}
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-4">
           <ChartContainer
             title="Trending dishes"
             description="Top dishes by quantity sold (completed orders only)"
@@ -224,6 +227,7 @@ export default function Analytics() {
             description="Registered customers with 2+ completed orders (selected period)"
             badge="Retention"
             isLoading={analyticsLoading}
+            className="lg:col-span-1"
           >
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -246,6 +250,22 @@ export default function Analytics() {
                     : "No registered customers found in this period."}
               </div>
             </div>
+          </ChartContainer>
+
+          <ChartContainer
+            title="Customer Feedback"
+            description="Realtime user feedback and ratings"
+            badge="Live"
+            isLoading={analyticsLoading}
+            className="lg:col-span-1"
+          >
+            {vendor?.id ? (
+              <RealtimeFeedback vendorId={vendor.id} />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading vendor data...
+              </div>
+            )}
           </ChartContainer>
         </div>
 

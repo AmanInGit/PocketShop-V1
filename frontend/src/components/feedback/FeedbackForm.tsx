@@ -51,9 +51,7 @@ export function FeedbackForm({ orderId, vendorId, vendorName, onSuccess }: Feedb
     setIsSubmitting(true);
 
     try {
-      // TODO: Add order_feedback table to database schema
-      // For now, using type assertion since table doesn't exist in types yet
-      const { error } = await (supabase.from('order_feedback' as any) as any).insert({
+      const { error } = await supabase.from('order_feedback').insert({
         order_id: orderId,
         vendor_id: vendorId,
         rating: data.rating,

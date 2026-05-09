@@ -7,7 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Package, ChevronLeft, RefreshCcw, Store } from 'lucide-react';
+import { Package, ChevronLeft, RefreshCcw, Store, MessageSquare } from 'lucide-react';
 import { ROUTES } from '@/constants/routes';
 import { OrderStatusTracker } from '@/components/orders/OrderStatusTracker';
 import { AcceptanceCountdown } from '@/components/orders/AcceptanceCountdown';
@@ -259,6 +259,29 @@ export default function OrderTracking() {
             <CardTitle className="text-base">Order details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {order.status === 'completed' && (
+              <div className="p-4 bg-green-50 dark:bg-green-950/30 rounded-xl border border-green-100 dark:border-green-900/50 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
+                    <MessageSquare className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-green-900 dark:text-green-100">
+                      How was your order?
+                    </h3>
+                    <p className="text-xs text-green-700/80 dark:text-green-300/80">
+                      Your feedback helps us improve!
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  className="w-full bg-green-600 hover:bg-green-700 text-white border-none shadow-sm"
+                  onClick={() => navigate(ROUTES.ORDER_FEEDBACK.replace(':orderId', order.id))}
+                >
+                  Give Feedback
+                </Button>
+              </div>
+            )}
             <div className="text-sm">
               {order.table_code && order.table_code !== 'PICKUP' && (
                 <p>
