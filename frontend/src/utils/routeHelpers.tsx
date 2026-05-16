@@ -8,12 +8,10 @@ import { Suspense, ComponentType } from 'react';
 import { Route, Navigate } from 'react-router-dom';
 import type { RouteConfig } from '@/routes/types';
 import { ROUTES } from '@/constants/routes';
-import { 
-  OnboardingProtectedRoute, 
-  AuthRouteGuard,
-  ErrorBoundary,
-  LoadingFallback
-} from '@/features/common/components';
+import { OnboardingProtectedRoute } from '@/features/common/components/shared/OnboardingProtectedRoute';
+import { AuthRouteGuard } from '@/features/common/components/shared/AuthRouteGuard';
+import ErrorBoundary from '@/features/common/components/ErrorBoundary';
+import { LoadingFallback } from '@/features/common/components/LoadingFallback';
 
 /**
  * Generate a React Router Route element from route configuration

@@ -6,6 +6,7 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  envDir: '.',
   plugins: [
     react(),
     // Phase 1: PWA skeleton - plugin disabled for now
@@ -61,30 +62,10 @@ export default defineConfig({
   root: '.',
   publicDir: 'public',
   build: {
-    // Optimize code splitting for better performance
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          // Vendor chunks - split large dependencies
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'react-vendor';
-            }
-            if (id.includes('@supabase')) {
-              return 'supabase-vendor';
-            }
-            if (id.includes('@react-google-maps') || id.includes('use-places-autocomplete')) {
-              return 'maps-vendor';
-            }
-            // Other node_modules go into vendor chunk
-            return 'vendor';
-          }
-        },
-      },
-    },
-    // Increase chunk size warning limit (we're intentionally creating larger chunks for better caching)
+    // Let Vite/Rollup choose chunks. Custom manualChunks split react vs other
+    // node_modules into separate files and caused TDZ errors in production
+    // (Uncaught ReferenceError: Cannot access 'z' before initialization).
     chunkSizeWarningLimit: 1000,
-    // Enable source maps for better debugging in production (disabled for smaller bundle)
     sourcemap: false,
   },
 })

@@ -12,8 +12,8 @@
  */
 
 import { Routes } from 'react-router-dom';
-import { ErrorBoundary } from '@/features/common/components';
-import { allRoutes } from '@/routes';
+import ErrorBoundary from '@/features/common/components/ErrorBoundary';
+import { allRoutes } from '@/routes/allRoutes';
 import { generateRoutes } from '@/utils/routeHelpers';
 
 export const AppRoutes = () => {

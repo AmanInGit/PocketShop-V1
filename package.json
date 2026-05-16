@@ -11,6 +11,8 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "build": "npm run build --workspace=frontend",
     "build:frontend": "npm run build --workspace=frontend",
+    "preview": "npm run preview --workspace=frontend",
+    "preview:frontend": "npm run preview --workspace=frontend",
     "install:all": "npm install && npm install --workspace=frontend",
     "lint": "npm run lint --workspace=frontend",
     "test": "npm run test --workspace=frontend"

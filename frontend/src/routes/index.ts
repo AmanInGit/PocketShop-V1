@@ -8,22 +8,11 @@
 export { publicRoutes } from './publicRoutes';
 export { protectedRoutes } from './protectedRoutes';
 export { onboardingRoutes } from './onboardingRoutes';
+export { allRoutes } from './allRoutes';
 export type { RouteConfig, RouteAccessLevel, BreadcrumbItem } from './types';
 
-// Combine all routes for easy access
-import { publicRoutes } from './publicRoutes';
-import { protectedRoutes } from './protectedRoutes';
-import { onboardingRoutes } from './onboardingRoutes';
+import { allRoutes } from './allRoutes';
 import type { RouteConfig } from './types';
-
-/**
- * All routes combined
- */
-export const allRoutes: RouteConfig[] = [
-  ...publicRoutes,
-  ...onboardingRoutes,
-  ...protectedRoutes,
-];
 
 /**
  * Get route configuration by path

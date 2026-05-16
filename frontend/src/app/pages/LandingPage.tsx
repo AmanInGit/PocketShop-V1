@@ -144,18 +144,7 @@ const LandingPage: React.FC = () => {
     setUserLocation({ latitude: place.latitude, longitude: place.longitude });
   };
 
-  // Handle Google Maps loading error
-  if (mapsLoadError) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-950 flex items-center justify-center">
-        <div className="text-white text-center p-8">
-          <h1 className="text-2xl font-bold mb-4">Error Loading Maps</h1>
-          <p className="text-red-300 mb-4">Please check your API key configuration.</p>
-          <p className="text-sm text-white/70">{mapsLoadError.message}</p>
-        </div>
-      </div>
-    );
-  }
+  const mapsUnavailable = Boolean(mapsLoadError);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-950 relative overflow-hidden">
@@ -226,6 +215,13 @@ const LandingPage: React.FC = () => {
       </div>
 
       {/* Header - Magicpin Style: Clean and Simple */}
+      {mapsUnavailable && (
+        <div className="relative z-20 mx-auto max-w-3xl px-4 pt-24 text-center text-sm text-amber-100 bg-amber-900/40 border border-amber-400/30 rounded-lg py-2">
+          Location search is limited. Maps could not be loaded
+          {mapsLoadError?.message ? `: ${mapsLoadError.message}` : '.'}
+        </div>
+      )}
+
       <header className="fixed top-0 w-full z-50 bg-purple-900/20 backdrop-blur-md border-b border-white/10">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
           {/* Top Bar - Logo and Sign In (Mobile First) */}

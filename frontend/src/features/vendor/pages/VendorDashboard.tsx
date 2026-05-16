@@ -13,7 +13,7 @@ import { useProfileCompletion } from '@/features/vendor/hooks/useProfileCompleti
 import { ProfileCompletionModalProvider, useProfileCompletionModal } from '@/features/vendor/context/ProfileCompletionModalContext';
 import { Loader2 } from 'lucide-react';
 import DashboardLayout from '@/app/layouts/DashboardLayout';
-import { LoadingFallback } from '@/features/common/components';
+import { LoadingFallback } from '@/features/common/components/LoadingFallback';
 import { ROUTES } from '@/constants/routes';
 import { supabase } from '@/lib/supabaseClient';
 import { OrderProvider } from '@/context/OrderProvider';
