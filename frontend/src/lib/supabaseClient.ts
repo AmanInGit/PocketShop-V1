@@ -10,24 +10,21 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/features/common/types/database';
+import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/appConfig';
 
-// Environment variables for Supabase configuration
-// These should be set in your .env.local file
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseEnv();
 
-// Debug logging
-console.log('Supabase Config:', {
-  url: supabaseUrl ? '✓ Set' : '✗ Missing',
-  key: supabaseAnonKey ? '✓ Set' : '✗ Missing',
-});
+if (import.meta.env.DEV) {
+  console.log('Supabase Config:', {
+    url: supabaseUrl ? '✓ Set' : '✗ Missing',
+    key: supabaseAnonKey ? '✓ Set' : '✗ Missing',
+  });
+}
 
-// Validate that required environment variables are present
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!isSupabaseConfigured()) {
   console.error(
-    'Missing Supabase environment variables. Please check your .env.local file.'
+    'Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
   );
-  // Don't throw error, just log warning - allows app to load
 }
 
 /**

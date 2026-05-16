@@ -98,16 +98,13 @@ export function ChartContainer({
             </div>
           </div>
 
-          <div className="relative min-h-[260px] flex-1">
+          <div className="relative">
             {isLoading ? (
-              <Skeleton className="h-full w-full rounded-2xl" />
+              <Skeleton className="h-[280px] w-full rounded-2xl" />
             ) : (
-              <motion.div
-                layout
-                className="h-full w-full rounded-2xl border border-border/40 bg-background/80 p-3 backdrop-blur"
-              >
+              <div className="w-full rounded-2xl border border-border/40 bg-background/80 p-3 backdrop-blur">
                 {children}
-              </motion.div>
+              </div>
             )}
           </div>
         </div>

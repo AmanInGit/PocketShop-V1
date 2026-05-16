@@ -237,6 +237,16 @@ Recommended settings:
 
 `frontend/vercel.json` is included so browser-history routes resolve correctly on direct navigation and page refresh.
 
+### Cloudflare (Workers Builds)
+
+- Path: `frontend`
+- Build command: `npm ci && npm run build`
+- Deploy command: `npx wrangler deploy`
+- Build variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- API token: use **Create new token** in build settings (do not use `wrangler pages deploy`)
+
+See `docs/setup/deployment-guide.md` for details.
+
 ### Supabase
 
 Deploy and manage:

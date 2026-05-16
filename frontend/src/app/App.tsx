@@ -19,6 +19,8 @@ import { usePWA } from '@/hooks/usePWA';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster as ShadcnToaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
+import { ConfigError } from '@/components/ConfigError';
+import { isSupabaseConfigured } from '@/lib/appConfig';
 
 // Create a QueryClient instance for React Query
 const queryClient = new QueryClient({
@@ -45,6 +47,10 @@ const AppContent = () => {
 
 // Main App Router
 function App() {
+  if (import.meta.env.PROD && !isSupabaseConfigured()) {
+    return <ConfigError />;
+  }
+
   // Initialize PWA hook (non-blocking, detects installability)
   // Currently not used but available for future install prompt UI
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

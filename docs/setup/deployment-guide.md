@@ -6,8 +6,41 @@ This guide describes the intended deployment shape for PocketShop without storin
 
 PocketShop is deployed as:
 
-- `frontend/` on a static hosting platform such as Vercel
+- `frontend/` on a static hosting platform such as Vercel or Cloudflare Pages
 - `supabase/` as the backend platform for database, auth, realtime, storage, and Edge Functions
+
+## Cloudflare (Workers Builds)
+
+If your dashboard shows **Build command** and **Deploy command** (required), you are on **Workers Builds**, not classic Pages-only Git deploy.
+
+Use these settings (Workers & Pages → pocketshop → Settings → Build):
+
+| Setting | Value |
+|--------|--------|
+| Path (root directory) | `frontend` |
+| Build command | `npm ci && npm run build` |
+| **Deploy command** | `npx wrangler deploy` |
+| Non-production branch deploy command | `npx wrangler versions upload` *(optional; default is fine)* |
+
+Do **not** use `npx wrangler pages deploy dist` — that calls the Pages API and fails with `Authentication error [code: 10000]` unless the token has Pages-only scopes. Use `wrangler deploy` with `frontend/wrangler.toml` (assets + SPA routing).
+
+### API token (fixes code 10000)
+
+In **Settings → Build → API token**, choose **Create new token** (Cloudflare-managed). Remove any custom `CLOUDFLARE_API_TOKEN` from build environment variables if it overrides the managed token with wrong permissions.
+
+### Build variables (required for the app)
+
+Under **Build variables and secrets** (not runtime-only vars), set:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_GOOGLE_MAPS_API_KEY` (optional)
+
+Redeploy after changing them. Vite inlines these at build time.
+
+### SPA routing
+
+`frontend/wrangler.toml` sets `not_found_handling = "single-page-application"`. `frontend/public/_redirects` is a fallback for other hosts.
 
 ## Main services
 
