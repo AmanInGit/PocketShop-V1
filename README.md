@@ -1,4 +1,4 @@
-# PocketShop
+# PocketShop -> https://pocketshop.pages.dev/
 
 PocketShop is a QR-first commerce platform for local businesses. It turns a simple scan into a full browser-based ordering experience where customers can browse a storefront, place orders, track status, and pay online without installing an app.
 
